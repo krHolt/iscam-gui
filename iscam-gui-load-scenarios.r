@@ -844,16 +844,17 @@ readControl <- function(file = NULL, ngears = NULL, nagears = NULL, verbose = FA
     tmp$syrtimeblock[ng,] <- as.numeric(strsplit(dat[ind <- ind + 1],"[[:blank:]]+")[[1]])
   }
 
-  # Priors for survey Q, one column for each survey
+  # Priors for survey Q & density-dependent Q, one column for each survey (K.Holt added DensDep Q)
   tmp$nits <- as.numeric(dat[ind <- ind + 1])
-  nrows <- 3
+  nrows <- 5
   ncols <- tmp$nits
   tmp$survq <- matrix(NA, nrow = nrows, ncol = ncols)
   for(row in 1:nrows){
     tmp$survq[row,] <- as.numeric(strsplit(dat[ind <- ind + 1],"[[:blank:]]+")[[1]])
   }
   # Rownames here are hardwired, so if you add a new row you must add a name for it here
-  rownames(tmp$survq) <- c("priortype","priormeanlog","priorsd")
+  rownames(tmp$survq) <- c("priortype","priormeanlog","priorsd", "denDepSwitch", "densDepPow")
+
 
   # Controls for fitting to mean weight data
   tmp$fitMeanWt <- as.numeric(dat[ind <- ind + 1])
@@ -873,6 +874,7 @@ readControl <- function(file = NULL, ngears = NULL, nagears = NULL, verbose = FA
                           "sdmeanFlastphase","mdevphase","sdmdev","mnumestnodes",
                           "fracZpriorspawn","agecompliketype","IFDdist")
   tmp$eof <- as.numeric(dat[ind <- ind + 1])
+
   return(tmp)
 }
 

@@ -8,15 +8,16 @@
 ##                      -4 gamma        (p1=alpha,p2=beta)                   ##
 ## ------------------------------------------------------------------------- ##
 ## npar
-7
+8
 ## ival   lb      ub      phz     prior   p1      p2      #parameter  ##
-5.0       0.0     15     1       0       0.0     15      #log_ro      ##
+12.9       0.0     15     1       0       0.0     15      #log_ro      ##
 0.75      0.2     1.0     3       3       3.00    2.00    #steepness   ##
 -1.61    -3.0     2.0    -2       1       -1.203  0.15    #log_m g&b  ##
 5.0       0.0     15     2       0       0.0     15      #log_avgrec  ##
-5.0       0.0     15     1       0       0.0     15      #log_recinit ##
+5.0       0.0     15     -1       0       0.0     15      #log_recinit ##
 0.26        0.01    0.99   -3       3       75.5    75.5    #rho         ##
 0.735       0.01   15.0    -3       4       2.50    1.50    #vartheta    ##
+-1.715    -3.0     2.0    -2      1       -1.203  0.15    #log_Mzero girls+boys ##
 ## ------------------------------------------------------------------------- ##
 ##
 ## ------------------------------------------------------------------------- ##
@@ -88,6 +89,14 @@
 0 0					# -prior log(mean)
 0 0					# -prior sd
 ## ------------------------------------------------------------------------- ##
+## DENSITY-DEPENDENT Q
+## Density-dependence switch:
+##				0 - off
+## 				1 - on
+## ---------------------------------------------------------------------------##
+1 1					# -switch (see legend above)
+0.878 1.759				# -power exponent (assumed; not estimated)
+## ---------------------------------------------------------------------------##
 ##
 ## CONTROLS FOR FITTING TO MEAN WEIGHT DATA	 //START_RF_ADD
 ## ------------------------------------------------------------------------- ##
@@ -112,8 +121,9 @@
 0.1         # 11 -std in deviations for natural mortality
 12          # 12 -number of estimated nodes for deviations in natural mortality
 0.50        # 13 -fraction of total mortality that takes place prior to spawning
-1           # 14 -switch for age-composition likelihood (1=dmvlogistic,2=dmultinom)
+0           # 14 -number of prospective years to start estimation from syr
 0           # 15 -switch for IFD distribution in selectivity simulations
+1	    # 16 -switch for density-dependent mortality (0=off, 1=on)
 ##
 ## ------------------------------------------------------------------------- ##
 ## MARKER FOR END OF CONTROL FILE (eofc)
