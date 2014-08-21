@@ -279,7 +279,6 @@ plotBiomassMCMC <- function(out       = NULL,
   }
 
   yrs <- as.numeric(names(out[[1]]$mcmc$sbt[[1]]))
-
   drawEnvelope(yrs, quants[[1]], colors[[1]], yUpper, first=TRUE, ylab="Biomass", xlab="Year", main="Biomass", las=1)
   if(length(out) > 1){
     for(line in 2:length(out)){
@@ -450,7 +449,7 @@ plotRecruitmentMPD <- function(out       = NULL,
     }
   }
 
-  plot(ryr, rt, type = "b", col=colors[[1]], pch=19, lty=1, lwd=2, ylim=c(0,yUpper), xlim=xlim,
+  plot(ryr, rt, type = "o", col=colors[[1]], pch=19, lty=1, lwd=2, ylim=c(0,yUpper), xlim=xlim,
        ylab="Recruitment", xlab="Year", main="Recruitment", las=1)
   if(length(out) > 1){
     for(line in 2:length(out)){
@@ -458,7 +457,7 @@ plotRecruitmentMPD <- function(out       = NULL,
       nyear <- length(out[[line]]$mpd$yr)
       ryr   <- out[[line]]$mpd$yr[(1+sage):nyear]
       rt    <- out[[line]]$mpd$rt
-      lines(ryr, rt, type="b",col=colors[[line]], pch=19, lty=1, lwd=2, ylim=c(0,yUpper), las=1)
+      lines(ryr, rt, type="o",col=colors[[line]], pch=19, lty=1, lwd=2, ylim=c(0,yUpper), las=1)
     }
   }
   if(!is.null(leg)){
@@ -509,10 +508,9 @@ plotRecruitmentMCMC <- function(out       = NULL,
   # Calculate quantiles for the posterior data if an MCMC is to be plotted
   quants <- vector("list", length(out))
   for(model in 1:length(out)){
-   
    #quants[[model]] <- getQuants(out[[model]]$mcmc$rt[[1]], ci)
    rt <- out[[model]]$mcmc$rt[[1]]
-    quants[[model]] <- getQuants(rt, ci)
+   quants[[model]] <- getQuants(rt, ci)
   }
   yUpper <- max(quants[[1]])
   for(model in 1:length(out)){
@@ -522,15 +520,15 @@ plotRecruitmentMCMC <- function(out       = NULL,
   yrs <- as.numeric(names(out[[1]]$mcmc$rt[[1]]))
 
   #RF - need to get xlim in case time series lengths differ
-    Xlim <- c(min(yrs), max(yrs))
-      if(length(out)>1){
-  	   for(model in 1:length(out)){
-  		   tmpryr     <- as.numeric(names(out[[model]]$mcmc$rt[[1]]))
-  		   minx <- min(min(tmpryr), min(Xlim)) 
-  		   maxx <- max(max(tmpryr), max(Xlim))  
-  		    Xlim <- c(minx, maxx)
-  		}
+  Xlim <- c(min(yrs), max(yrs))
+  if(length(out)>1){
+    for(model in 1:length(out)){
+      tmpryr     <- as.numeric(names(out[[model]]$mcmc$rt[[1]]))
+      minx <- min(min(tmpryr), min(Xlim))
+      maxx <- max(max(tmpryr), max(Xlim))
+      Xlim <- c(minx, maxx)
     }
+  }
 
   plot(yrs, quants[[1]][2,], type="p", pch=20, col=colors[[1]], ylim=c(0,yUpper), xlim=Xlim, xlab="Year", ylab="Recruitment", las=1)
   arrows(yrs, quants[[1]][1,],
@@ -538,7 +536,6 @@ plotRecruitmentMCMC <- function(out       = NULL,
   if(length(out) > 1){
     incOffset <- offset
     for(line in 2:length(out)){
-      
       yrs <- as.numeric(names(out[[line]]$mcmc$rt[[1]]))
       # Plot the uncertainty
       points(yrs+incOffset, quants[[line]][2,], pch=20, col=colors[[line]])
@@ -547,15 +544,14 @@ plotRecruitmentMCMC <- function(out       = NULL,
       incOffset <- incOffset + offset
     }
   }
-   
-   #RF added median and mean for 1 scenario plot
-   if(length(out) == 1){
-        abline(h=median(as.matrix(rt)),col=2, lty=1)
-        abline(h=mean(as.matrix(rt)),col=3,lty=1)
-	 if(!is.null(leg))  legend(leg, legend=c(names,"Long-term median","MCMC long-term mean"), col=c(unlist(colors),2,3), lty=1, lwd=2)
-   }
-    if(length(out) > 1){
-	 if(!is.null(leg))  legend(leg, legend=names, col=unlist(colors), lty=1, lwd=2)
+  #RF added median and mean for 1 scenario plot
+  if(length(out) == 1){
+    abline(h=median(as.matrix(rt)),col=2, lty=1)
+    abline(h=mean(as.matrix(rt)),col=3,lty=1)
+    if(!is.null(leg))  legend(leg, legend=c(names,"Long-term median","MCMC long-term mean"), col=c(unlist(colors),2,3), lty=1, lwd=2)
+  }
+  if(length(out) > 1){
+    if(!is.null(leg))  legend(leg, legend=names, col=unlist(colors), lty=1, lwd=2)
   }
 
 }

@@ -14,7 +14,7 @@ plotBiology <- function(plotNum    = 1,         # Plot code number
                         ci         = NULL,      # confidence interval in % (0-100)
                         multiple   = FALSE,     # TRUE/FALSE to plot sensitivity cases
                         sensGroup  = 1,         # Sensitivity group to plot if multiple==TRUE
-                        index      = 1,
+                        index      = 1,         # Index/gear to plot
                         # PlotSpecs: Width, height, and resolution of screen and file
                         ps         = list(pngres = .RESOLUTION,
                                           pngw   = .WIDTH,
@@ -36,13 +36,14 @@ plotBiology <- function(plotNum    = 1,         # Plot code number
   # 8  Time-varying natural mortality (only plotted if growthdatF$M vector contains different values)
   # 9  Perspective plot of time-varying growth (only plotted if growthvaries and growthseries are non-NULL)
   # 10 Contour plot of time-varying growth (only plotted if growthvaries and growthseries are non-NULL)
-  # 11 Bubble plot of composition data
+  # 11 Bubble plot of composition data, two-paned if it is a two-sex model.
   # 12 Bar plot of composition fits
   # 13 Bubble plot of composition residuals
   # 14 LW relationship with fit a parameter estimates
   # 15 VONB relationship with fit a parameter estimates
+  # 16 MA relationship with fit a parameter estimates
 
-  if(plotNum < 1 || plotNum > 15){
+  if(plotNum < 1 || plotNum > 16){
     return(FALSE)
   }
   val          <- getWinVal()
@@ -79,7 +80,7 @@ plotBiology <- function(plotNum    = 1,         # Plot code number
   if(plotNum==7)  cat("No Plot Yet -- Coming Soon!!\n")
   if(plotNum==8)  cat("No Plot Yet -- Coming Soon!!\n")
   if(plotNum==9)  cat("No Plot Yet -- Coming Soon!!\n")
-  if(plotNum==10)  cat("No Plot Yet -- Coming Soon!!\n")
+  if(plotNum==10) cat("No Plot Yet -- Coming Soon!!\n")
 
   # Composition data
   if(plotNum==11) plotComposition(scenario, index, leg)
@@ -87,6 +88,7 @@ plotBiology <- function(plotNum    = 1,         # Plot code number
   if(plotNum==13) plotCompositionResid(scenario, index, leg)
   if(plotNum==14) plotLW(leg)
   if(plotNum==15) plotGrowth(leg)
+  if(plotNum==16) plotMA(leg)
 
   if(png){
     cat0(.PROJECT_NAME,"->",currFuncName,"Wrote figure to disk: ",filename,"\n")
@@ -110,6 +112,18 @@ plotLW <- function(leg){
   legNames <- NULL
   legCols <- NULL
   data <- bio$lw
+  if(is.null(data)){
+    cat0(.PROJECT_NAME,"->",getCurrFunc(),"Error - element 'lw' of object 'bio' does not exist. Run the length/weight model from the Biotool tab.")
+    return(NULL)
+  }
+  # For alpha and beta as greek letters in plots
+  greek <- c("alpha", "beta")
+  cnames <- paste(LETTERS[1:2], letters[1:2])
+  legendExp <- sapply(1:2, function(i) {
+    as.expression(substitute(A (B),
+        list(A = as.name(cnames[i]), B = as.name(greek[i]))))
+  })
+
   if(length(data) == 2){
     # Split sexes
     for(sex in 1:2){
@@ -130,9 +144,9 @@ plotLW <- function(leg){
       curve(a*x^b, col=col, lwd=3, add=T)
       legCols <- c(legCols, col)
       if(sex == 1){
-        legNames <- c(legNames, "Male")
+        legNames <- c(legNames, as.expression(substitute(paste("Male  ", alpha, "=", a, " ", beta,"=", b, "\n"))))
       }else{
-        legNames <- c(legNames, "Female")
+        legNames <- c(legNames, as.expression(substitute(paste("Female  ", alpha, "=", a, " ", beta,"=", b, "\n"))))
       }
     }
   }else{
@@ -146,7 +160,72 @@ plotLW <- function(leg){
     b <- data[[1]][[2]][2,]
     curve(a*x^b, col=col, lwd=3, add=T)
     legCols <- c(legCols, col)
-    legNames <- c(legNames, "Combined sexes")
+    legNames <- c(legNames, as.expression(substitute(paste("Combined sexes  ", alpha, "=", a, " ", beta,"=", b, "\n"))))
+  }
+  if(!is.null(leg)){
+    legend(leg, legend=legNames, col=legCols, lty=1, lwd=2)
+  }
+}
+
+plotMA <- function(leg  = NULL){
+  # Plot the maturity/age data and fit from the bio global object
+  # If split sex, plot both with individual fits.
+  # First column of 'data' assumed to be length in mm, second is maturity level.
+  currFuncName <- getCurrFunc()
+  oldPar <- par(no.readonly=TRUE)
+  on.exit(par(oldPar))
+
+  if(!exists("bio", envir = .GlobalEnv)){
+    cat0(.PROJECT_NAME,"->",getCurrFunc(),"Error - object 'bio' does not exist. Run the maturity/age model from the Biotool tab.")
+    return(NULL)
+  }
+  legNames <- NULL
+  legCols <- NULL
+  data <- bio$ma
+  if(is.null(data)){
+    cat0(.PROJECT_NAME,"->",getCurrFunc(),"Error - element 'ma' of object 'bio' does not exist. Run the maturity/age model from the Biotool tab.")
+    return(NULL)
+  }
+  if(length(data) == 2){
+    # Split sexes
+    for(sex in 1:2){
+      ma <- data[[sex]][[1]]
+      a <- ma[,1]
+      m <- ma[,2]
+      xlim <- c(0,max(a))
+      if(sex == 1){
+        col <- "blue"
+        shade <- .getShade(col, 80)
+        plot(a, m, col=shade, pch=1, xlim=xlim, xlab="Age", ylab="Proportion mature")
+      }else{
+        col <- "red"
+        shade <- .getShade(col, 80)
+        points(a, m, col=shade, pch=1, xlab="Age", ylab="Proportion mature")
+      }
+      a50 <- data[[sex]][[2]][1,]
+      sigma_a50 <- data[[sex]][[2]][2,]
+      curve(1/(1+exp(-(x-a50)/sigma_a50)), col=col, lwd=3, add=TRUE)
+      legCols <- c(legCols, col)
+      if(sex == 1){
+        legNames <- c(legNames, as.expression(substitute(paste("Male  a"["50%"], " = ", a50, " std"["50%"], "  = ", sigma_a50, "\n"))))
+      }else{
+        legNames <- c(legNames, as.expression(substitute(paste("Female  a"["50%"], " = ", a50, " std"["50%"], "  = ", sigma_a50, "\n"))))
+      }
+    }
+  }else{
+    # Combined sexes
+    ma <- data[[1]][[1]]
+    a <- ma[,1]
+    m <- ma[,2]
+    xlim <- c(0,max(a))
+    col <- "blue"
+    shade <- .getShade(col, 80)
+    plot(a, m, col=shade, xlim=xlim, xlab="Age", ylab="Proportion mature")
+    a50 <- data[[1]][[2]][1,]
+    sigma_a50 <- data[[1]][[2]][2,]
+    curve(1/(1+exp(-(x-a50)/sigma_a50)), col=col, lwd=3, add=TRUE)
+    legCols <- c(legCols, col)
+    legNames <- c(legNames, as.expression(substitute(paste("Combined sexes a"["50%"], " = ", a50, " std"["50%"], "  = ", sigma_a50, "\n"))))
   }
   if(!is.null(leg)){
     legend(leg, legend=legNames, col=legCols, lty=1, lwd=2)
@@ -168,12 +247,16 @@ plotGrowth <- function(leg){
   legNames <- NULL
   legCols <- NULL
   data <- bio$vonb
+  if(is.null(data)){
+    cat0(.PROJECT_NAME,"->",getCurrFunc(),"Error - element 'vonb' of object 'bio' does not exist. Run the VonB model from the Biotool tab.")
+    return(NULL)
+  }
   if(length(data) == 2){
     # Split sexes
     for(sex in 1:2){
       la <- data[[sex]][[1]]
-      l <- la[,1]/10.0 # divide by ten to go from mm->cm
-      a <- la[,2]
+      l  <- la[,1]/10.0 # divide by ten to go from mm->cm
+      a  <- la[,2]
       if(sex == 1){
         col <- "blue"
         shade <- .getShade(col, 20)
@@ -184,44 +267,49 @@ plotGrowth <- function(leg){
         points(a, l, col=shade, pch=1, xlab="Age", ylab="Length (cm)")
       }
       linf <- data[[sex]][[2]][1,]
-      k <- data[[sex]][[2]][2,]
+      k    <- data[[sex]][[2]][2,]
+      tt0  <- data[[sex]][[2]][3,]
       curve(linf*(1-exp(-k*x)), col=col, lwd=3, add=T)
       legCols <- c(legCols, col)
       if(sex == 1){
-        legNames <- c(legNames, "Male")
+        legNames <- c(legNames, as.expression(substitute(paste("Male  L"[infinity], " = ", linf, " ", kappa, " = ", k, " tt"[0], " = ", tt0, "\n"))))
       }else{
-        legNames <- c(legNames, "Female")
+        legNames <- c(legNames, as.expression(substitute(paste("Female  L"[infinity], " = ", linf, " ", kappa, " = ", k, " tt"[0], " = ", tt0, "\n"))))
       }
     }
   }else{
     # Combined sexes
-    la <- data[[1]][[1]]
-    l <- la[,1]/10.0 # divide by ten to go from mm->cm
-    a <- la[,2]
+    la  <- data[[1]][[1]]
+    l   <- la[,1]/10.0 # divide by ten to go from mm->cm
+    a   <- la[,2]
     col <- "blue"
     plot(a, l, col=col, xlab="Age", ylab="Length (cm)")
     linf <- data[[1]][[2]][1,]
-    k <- data[[1]][[2]][2,]
+    k    <- data[[1]][[2]][2,]
+    tt0  <- data[[1]][[2]][3,]
     curve(linf*(1-exp(-k*x)), col=col, lwd=3, add=T)
     legCols <- c(legCols, col)
-    legNames <- c(legNames, "Combined sexes")
-  }
+    legNames <- c(legNames, as.expression(substitute(paste("Combined sexes  L"[infinity], " = ", linf, " ", kappa, " = ", k, " tt"[0], " = ", tt0, "\n"))))
+   }
   if(!is.null(leg)){
     legend(leg, legend=legNames, col=legCols, lty=1, lwd=2)
   }
 }
 
 plotComposition <- function(scenario, index, leg){
+  # Plot the age composition for the given index (gear).
+  # If the model is two-sex, a two-paneled plot will be drawn.
   currFuncName <- getCurrFunc()
   oldPar <- par(no.readonly=TRUE)
   on.exit(par(oldPar))
 
+  nSex <- op[[scenario]]$inputs$data$nsex
   nAgears <-  op[[scenario]]$input$data$nagears
   nAgearsobs <- op[[scenario]]$input$data$nagearsvec
-  Flags <- op[[scenario]]$input$data$agecompflag  #0 = length data 1= age data
+  Flags <- op[[scenario]]$input$data$agecompflag  #0 = length data 1= age data, if two-sex model this will be length 2 vector
 
   if(nAgearsobs[1] > 0){
-    compData <-  as.data.frame(op[[scenario]]$output$mpd$d3_A) #Get the composition data
+    compData <-  as.data.frame(op[[scenario]]$outputs$mpd$d3_A) #Get the composition data
     gears <- unique(compData[,2])
 
     if(is.element(index, gears)){
@@ -242,23 +330,43 @@ plotComposition <- function(scenario, index, leg){
       syr <- yrs[1]
       nyr <- yrs[length(yrs)]
 
-      compData <- compData[, 6:ncol(compData)]
-      compData <- compData[, 1:nages]  #remove NAs from ragged array
+      if(nSex == 2){
+        par(mfrow=c(1,2), oma=c(0,0,2,0), mar=c(5,4,1.5,2))
+      }
+      for(sex in 0:2){
+        # Extract the data for the given sex
+        compdat <- compData[compData[,5] == sex,]
+	if(length(compdat[,1]) > 0){	
+		yrs <- compdat[,1]
+		compdat <- compdat[, 6:ncol(compdat)]
+		compdat <- compdat[, 1:nages]  #remove NAs from ragged array
 
-      Prop <- matrix(nrow=nrow(compData), ncol=ncol(compData))
-      for(ii in 1:nrow(compData)) Prop[ii,] <-  as.numeric(compData[ii,]/sum(compData[ii,]) )
+		Prop <- matrix(nrow=nrow(compdat), ncol=ncol(compdat))
+		for(ii in 1:nrow(compdat)) Prop[ii,] <-  as.numeric(compdat[ii,]/sum(compdat[ii,]) )
 
-      plotBubbles(t(Prop), xval=yrs,yval=sage:nage, prettyaxis=T, size=0.1, powr=0.5, xlab="Year", ylab=Ylab, main=paste("Gear", index), las=1)
-      legend(leg, legend=c("Positive", "Zero"), col=c("black","blue"), pch=1, bty="n", cex=1.25)
-
-      #bubble.plot(syr:nyr,sage:nage,Prop,scale=0.3,xlab="Year",ylab=Ylab,add=F,log.scale=T, main=paste("Gear", index), las=1)
+		if(sex==1){
+		  sexstr <- "Male"
+		}else if(sex==2){
+		  sexstr <- "Female"
+		}else{
+		  sexstr <- "Combined sexes"
+		}
+		plotBubbles(t(Prop), xval=yrs,yval=sage:nage, prettyaxis=TRUE, size=0.1, powr=0.5,
+			    xlab="Year", main=sexstr, ylab=Ylab, las=1, xaxt="n")
+		axis(1, at=yrs, labels=yrs, las=2)
+		legend(leg, legend=c("Positive", "Zero"), col=c("black","blue"), pch=1, bty="n", cex=1.25)
+		 title(paste("Gear", index), outer=TRUE)
+	  }#end if		
+     } #end for
+      
+     
     }else{
       cat0(.PROJECT_NAME,"->",currFuncName,"No composition data for this gear.")
     }
   }else{
      cat0(.PROJECT_NAME,"->",currFuncName,"No composition data for this scenario.")
   }
-}
+}#end function
 
 plotCompositionFit <- function(scenario, index,leg){
   currFuncName <- getCurrFunc()
