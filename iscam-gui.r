@@ -260,9 +260,10 @@ iscam <- function(reloadScenarios      = FALSE,
            "sTSRecruitmentByArea"                   = {plotTS(s,6,png,"RecruitmentByArea",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
            # Only MPD for Index
            "sTSIndex"                               = {plotTS(s,7,png,"Index",FALSE,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sSPRRatio"                              = {plotTS(s,8,png,"SPRRatio",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
+           "sTSIndexMulti"                          = {plotTS(s,8,png,"IndexMulti",FALSE,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
+           "sSPRRatio"                              = {plotTS(s,9,png,"SPRRatio",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
            # Only MPD for Fishing mortality
-           "sFishingMortality"                      = {plotTS(s,9,png,"Fishing Mortality",FALSE,ci,sensGroup=sgr,index=ind,leg=leg)},
+           "sFishingMortality"                      = {plotTS(s,10,png,"Fishing Mortality",FALSE,ci,sensGroup=sgr,index=ind,leg=leg)},
            # From iscam-gui-figures-biology.r
            "sBiologyMeanWtAtAge"                    = {plotBiology(1,png,"BiologyMeanWtAtAge",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
            "sBiologyMaturityAtAge"                  = {plotBiology(2,png,"BiologyMaturityAtAge",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
@@ -293,9 +294,11 @@ iscam <- function(reloadScenarios      = FALSE,
            "sSelexRetentionDiscardMortalityEndYear" = {plotSelex(9,png,"SelexRetentionDiscardMortalityEndYear",plotMCMC,ci,sensGroup=sgr,index=ind)},
            "sSelexTVAtAgeSurface"                   = {plotSelex(11,png,"SelexUncertainty",plotMCMC,ci,sensGroup=sgr,index=ind)},
            # From iscam-gui-figures-catch.r
-           "sCatchLandings"                         = {plotCatch(s,1,png,"CatchLandings",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           #"sCatchLandingsStacked"                  = {plotCatch(s,2,png,"CatchLandingsStacked",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           "sCatchLandingsObsVsExpLandings"         = {plotCatch(s,3,png,"CatchLandingsObsVsExpLandings",plotMCMC,ci,sensGroup=sgr,index=ind)},
+           "sCatchLandingsByGear"                   = {plotCatch(s,1,png,"CatchLandingsByGear",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
+           "sCatchLandings"                         = {plotCatch(s,2,png,"CatchLandingsMulti",plotMCMC,ci,sensGroup=sgr,index=ind)},
+           "sCatchFit"                              = {plotCatch(s,3,png,"CatchFit",plotMCMC,ci,sensGroup=sgr,index=ind)},
+           "sCatchFitMulti"                         = {plotCatch(s,4,png,"CatchFit",plotMCMC,ci,sensGroup=sgr,index=ind)},
+           "sCatchFitByGear"                        = {plotCatch(s,5,png,"CatchFit",plotMCMC,ci,sensGroup=sgr,index=ind)},
            #"sCatchTotal"                            = {plotCatch(s,4,png,"CatchTotal",plotMCMC,ci,sensGroup=sgr,index=ind)},
            #"sCatchTotalStacked"                     = {plotCatch(s,5,png,"CatchTotalStacked",plotMCMC,ci,sensGroup=sgr,index=ind)},
            #"sCatchDiscards"                         = {plotCatch(s,6,png,"CatchDiscards",plotMCMC,ci,sensGroup=sgr,index=ind)},
@@ -475,9 +478,10 @@ iscam <- function(reloadScenarios      = FALSE,
          },
          "nextGroup" = {
            nextGroup <- val$entryIndex + 1
-           if(nextGroup > length(op[[scenario]]$inputs$data$indices)){
-             nextGroup <- length(op[[scenario]]$inputs$data$indices)
-           }
+           # K.Holt de-activated because it caused a bug for plotting by gear when ngear > nindex
+          # if(nextGroup > length(op[[scenario]]$inputs$data$indices)){
+          #   nextGroup <- length(op[[scenario]]$inputs$data$indices)
+           #}
            setWinVal(c(entryIndex=nextGroup))
          },
          # Write the plots and tables to disk

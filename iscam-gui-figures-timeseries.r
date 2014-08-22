@@ -158,12 +158,19 @@ plotTS <- function(scenario   = 1,         # Scenario number
   }
   if(plotNum == 8){
     if(plotMCMC){
+      #plotIndexMCMC(out, colors, names, inputs, ci, index = index, verbose = !silent, leg = leg)
+    }else{
+      plotIndexMultiMPD(out, colors, names, inputs, verbose = !silent, leg = leg)
+    }
+  }
+  if(plotNum == 9){
+    if(plotMCMC){
       #plotSPRMCMC(out, colors, names, inputs, ci, index = index, verbose = !silent, leg = leg)
     }else{
       #plotSPRMPD(out, colors, names, inputs, index = index, verbose = !silent, leg = leg)
     }
   }
-  if(plotNum == 9){
+  if(plotNum == 10){
     if(plotMCMC){
       plotFMPD(out, colors, names, ci, verbose = !silent, leg = leg)
     }else{
@@ -621,7 +628,10 @@ plotIndexMPD <- function(out       = NULL,
   dat <- dat[!is.na(dat)]
   plot(yrs, dat, type="l", col=colors[[1]], lty=1, lwd=2, xlim=c(minYear,maxYear),ylim=c(0,yUpper),ylab="Index", xlab="Year", main=paste0("Index fit gear ",index), las=1)
   points(yrs, inputindices[,2], pch=3)
-  arrows(yrs,inputindices[,2]+CV*inputindices[,2] ,yrs,inputindices[,2]-CV*inputindices[,2],code=3,angle=90,length=0.01, col=colors[[1]]) #RF added error bars
+  # K. Holt made it so that error bars only plotted if CV varies among observations
+  if (max(CV)-min(CV) > 0)   {
+     arrows(yrs,inputindices[,2]+CV*inputindices[,2] ,yrs,inputindices[,2]-CV*inputindices[,2],code=3,angle=90,length=0.01, col=colors[[1]]) #RF added error bars
+  }
   if(length(out) > 1){
     for(model in 2:length(out)){
       dat <- out[[model]]$mpd$it_hat[index,]
@@ -634,6 +644,109 @@ plotIndexMPD <- function(out       = NULL,
     legend(leg, legend=names, col=unlist(colors), lty=1, lwd=2)
   }
 }
+
+
+
+plotIndexMultiMPD <- function(out       = NULL,
+                         colors    = NULL,
+                         names     = NULL,
+                         inputs    = NULL,
+                         verbose   = FALSE,
+                         leg = "topright"){
+  # Index fits plot for an MPD
+  # out is a list of the mpd outputs to show on the plot
+  # col is a list of the colors to use in the plot
+  # names is a list of the names to use in the legend
+  currFuncName <- getCurrFunc()
+  if(is.null(out)){
+    cat0(.PROJECT_NAME,"->",currFuncName,"You must supply an output vector (out).")
+    return(NULL)
+  }
+  if(length(out) < 1){
+    cat0(.PROJECT_NAME,"->",currFuncName,"You must supply at least one element in the output vector (out).")
+    return(NULL)
+  }
+  if(is.null(colors)){
+    cat0(.PROJECT_NAME,"->",currFuncName,"You must supply a colors vector (colors).")
+    return(NULL)
+  }
+  if(is.null(names)){
+    cat0(.PROJECT_NAME,"->",currFuncName,"You must supply a names vector (names).")
+    return(NULL)
+  }
+  if(is.null(inputs)){
+    cat0(.PROJECT_NAME,"->",currFuncName,"You must supply an inputs list (inputs).")
+    return(NULL)
+  }
+  oldPar <- par(no.readonly=TRUE)
+  on.exit(par(oldPar))
+
+  # Get the plotting limits by looking through the input lists and outputs of indices
+
+  nIndices<-inputs[[1]]$nit
+
+  # Get min and max year for plotting that will be used for all panels
+  for (i in 1:nIndices) {
+
+      if (i == 1) {
+         maxYear<- max(inputs[[1]]$indices[[1]][,1])
+         minYear<- min(inputs[[1]]$indices[[1]][,1])
+      }
+      if (i > 1) {
+         maxYear<-max(c(maxYear, inputs[[1]]$indices[[i]][,1]))
+         minYear<-min(c(minYear, inputs[[1]]$indices[[i]][,1]))
+      }
+
+   }
+
+  if (nIndices==1) par(mfrow=c(1,1),mar=c(5,4,2,2))
+  if (nIndices == 2) par(mfrow=c(2,1),mar=c(4,4,2,2))
+  if (nIndices == 3 | nIndices == 4) par(mfrow=c(2,2),mar=c(4,4,2,2))
+  if (nIndices == 5 | nIndices == 6) par(mfrow=c(3,2),mar=c(4,4,2,2))
+
+
+  for (i in 1:nIndices) {
+
+      index <- i
+      inputindices <- inputs[[1]]$indices[[index]]
+
+      yUpper <- max(inputindices[,2] + inputindices[,2]*(1/inputindices[,7]))  # it column (index value) - NOTE 2 is hardwired (it). If this function breaks look here!
+
+      for(model in 1:length(out)){
+        inputindices <- inputs[[model]]$indices[[index]]
+        outputit <- out[[model]]$mpd$it_hat[index,]
+        inputit  <- inputindices[,2] # NOTE 2 is hardwired (it). If this function breaks look here!
+        yUpper   <- max(yUpper, inputit, outputit, na.rm=TRUE) # NA is removed here because surveys have different years, and missing ones are NA
+
+      }
+      dat <- out[[1]]$mpd$it_hat[index,]
+      yrs <- inputs[[1]]$indices[[index]][,1]
+      CV <-  1./inputs[[1]]$indices[[index]][,7]    #RF added CVs
+      dat <- dat[!is.na(dat)]
+
+      plot(yrs, dat, type="l", col=colors[[1]], lty=1, lwd=2, xlim=c(minYear,maxYear),ylim=c(0,yUpper),ylab="Index", xlab="Year", main=paste0("Index fit gear ",index), las=1)
+      points(yrs, inputindices[,2], pch=3)
+      # K. Holt made it so that error bars only plotted if CV varies among observations
+      if (max(CV)-min(CV) > 0)   {
+         arrows(yrs,inputindices[,2]+CV*inputindices[,2] ,yrs,inputindices[,2]-CV*inputindices[,2],code=3,angle=90,length=0.01, col=colors[[1]]) #RF added error bars
+      }
+      if(length(out) > 1){
+         for(model in 2:length(out)){
+           dat <- out[[model]]$mpd$it_hat[index,]
+           yrs <- inputs[[model]]$indices[[index]][,1]
+           dat <- dat[!is.na(dat)]
+           lines(yrs, dat,  type="l", col=colors[[model]], lty=1, lwd=2)
+         }
+      }
+    if(!is.null(leg)){
+       legend(leg, legend=names, col=unlist(colors), lty=1, lwd=2)
+    }
+  }
+
+  par(mfrow=c(1,1),mar=c(5,4,2,2))
+
+}
+
 
 plotFMPD <- function(out       = NULL,
                      colors    = NULL,
