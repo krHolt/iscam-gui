@@ -61,7 +61,7 @@
 ## ------------------------------------------------------------------------- ##
 6	6	11	# 1  -selectivity type ivector(isel_type) for gear
 4.45	2.0	650	# 2  -Age at 50% selectivity (logistic)
-0.2	0.2	65	# 3  -STD at 50% selectivity (logistic)
+0.2	0.2	15	# 3  -STD at 50% selectivity (logistic)
 0	0	0	# 4  -No. of age nodes for each gear (0=ignore)
 0	0	0	# 5  -No. of year nodes for 2d spline(0=ignore)
 -1	-2	-3	# 6  -Phase of estimation (-1 for fixed)
