@@ -130,7 +130,7 @@ plotTraces <- function(mcmcData = NULL, burnthin = c(0,1), axis.lab.freq=200){
   # that will hold all of the parameter trace plots.
   nrows <- ncols <- ceiling(sqrt(numParams))
 	par(mfrow=c(nrows, ncols), las=1)
-  mcmcData <- window(as.matrix(mcmcData), start=burnin, thin=thinning)
+  mcmcData <- window(mcmc(as.matrix(mcmcData)), start=burnin, thin=thinning)
   for(param in 1:numParams){
     par(mar=.MCMC_MARGINS)
     mcmcTrace <- as.matrix(mcmcData[,param])
