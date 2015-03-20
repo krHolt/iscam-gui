@@ -1,10 +1,9 @@
 #**********************************************************************************
 # iscam-gui.r
 # This file contains the code for a front end GUI controller for iscam-gui using
-# Tcl/Tk windows implemented using the R package 'PBSModelling'.  The data
-# structure used is an list, which is a list of lists, see iscam-gui-load-scenarios.r for
-# details on this structure. This file assumes that a list object called 'op'
-# exists and is of the correct format.
+# Tcl/Tk windows implemented using the R package 'PBSModelling'. The data
+# structure used is a list, which is a list of lists, see iscam-gui-load-scenarios.r for
+# details on this structure.
 #
 # Author            : Chris Grandin
 # Development Date  : August 2013 - Present
@@ -12,43 +11,39 @@
 #
 # Source this file, then call iscam()
 #
-# iscam(reload=F, silent=TRUE, copyModelExecutables = FALSE)
+# iscam(reload=F, silent=TRUE)
 #
 #**********************************************************************************
 
 # TODO:
-# Fix retrospective plotting and model running, need an mcmc buttton as weel for retros
 # Implement the order changes by sorting the op list, etc
-# Fix the sensitivity changnig so that it can't go past limits
-# Change the radios to check boxes for plotting, with all checked appearing in a table, i.e. mfrow, mfcol
-#  also there should be a radio button for "all side-by-side", "all top-bottom", or "as square as possible" etc
 # Add the ability to copy any one of the scenarios, at which time the gui will have to reload (how?)
 # Fix all mcmc diagnostic plotting and other misc plotting.
 # Remove all references to assignGlobals()
 
 removeAllExcept <- function(vars  = c("op","sens","bio")){
-  # removeAllExcept()
-  # Removes everything in the workspace except for what is in the vars list.
+  # Removes everyobject in the workspace except for what is in the vars list.
   # Upon finishing, the workspace will contain whatever is in the vars list,
-  # plus the objects 'removeAllExcept' (this function) and 'modelLoaded'.
+  #  plus the objects 'removeAllExcept' (this function) and 'modelLoaded'.
   # That tells the software that the model has already been loaded.
-  # - vars - A list of objects to keep, typically just 'op'.
 
   vars <- c(vars, "removeAllExcept")
-  keep <- match(x = vars, table = ls(all = T, envir = .GlobalEnv))
+  keep <- match(x = vars, table = ls(all = TRUE, envir = .GlobalEnv))
   if(any(is.na(keep))){
     modelLoaded <<- FALSE
   }else{
-    rm(list=ls(all = T, envir = .GlobalEnv)[-keep], envir = .GlobalEnv)
+    rm(list=ls(all = TRUE, envir = .GlobalEnv)[-keep], envir = .GlobalEnv)
     modelLoaded <<- TRUE
   }
 }
 removeAllExcept()
 
 require(PBSmodelling)
+require(tcltk)
 require(coda)
-require(ggplot2)
+require(ggplot2) # Only used for Observed landings plot.
 require(reshape2)
+require(Hmisc)
 
 options(stringsAsFactors = FALSE)
 options(warn = -1)
@@ -74,14 +69,13 @@ source(.FIGURES_SELEX_SOURCE)
 source(.FIGURES_TIMESERIES_SOURCE)
 source(.FIGURES_CATCH_SOURCE)
 source(.FIGURES_MCMC_SOURCE)
+source(.FIGURES_MLE_SOURCE)
+source(.FIGURES_RETROSPECTIVES_SOURCE)
 
 iscam <- function(reloadScenarios      = FALSE,
-                  copyModelExecutables = FALSE,
                   silent               = TRUE){
-  # iscam()
   # loads model outputs and launches the main iscam-gui GUI.
   # - reloadScenarios TRUE/FALSE - reload the data from all model output files in all scenarios.
-  # - copyADMBExecutables TRUE/FALSE copy the admb executable from admb folder to each scenario folder.
   # - silent TRUE/FALSE - show messages on command line
 
   # Create a global variable which tells the program whether or not to be silent
@@ -90,8 +84,7 @@ iscam <- function(reloadScenarios      = FALSE,
 
   graphics.off()  # Destroy graphics window if it exists
 
-  .loadData(reloadScenarios=reloadScenarios,
-            copyModelExecutables = copyModelExecutables)
+  .loadData(reloadScenarios = reloadScenarios)
 
   if(!exists("sens")){
     sens <<- .loadSensitivityGroups(op = op)
@@ -105,18 +98,19 @@ iscam <- function(reloadScenarios      = FALSE,
     viewHeader            <<- data.frame()
     viewSensitivityGroups <<- data.frame()
     viewColor             <<- data.frame()
-    viewOrder             <<- data.frame()
+    viewLineType          <<- data.frame()
     for(scenario in 1:length(op)){
       viewHeader            <<- rbind(viewHeader,op[[scenario]]$names$scenario)
       viewSensitivityGroups <<- rbind(viewSensitivityGroups,op[[scenario]]$inputs$sensitivityGroup)
       viewColor             <<- rbind(viewColor,op[[scenario]]$inputs$color)
-      viewOrder             <<- rbind(viewOrder,op[[scenario]]$inputs$order)
+      #TODO: Change loading code so that the order is actually written as the linetype
+      viewLineType          <<- rbind(viewLineType,op[[scenario]]$inputs$linetype)
     }
     colnames(viewHeader)            <<- .SCENARIO_LIST_LABEL
     colnames(viewSensitivityGroups) <<- .SENSITIVITY_GROUP_LABEL
     colnames(viewColor)             <<- .PLOT_COLOR_LABEL
-    colnames(viewOrder)             <<- .PLOT_ORDER_LABEL
-    scenarioHeader <<- cbind(viewHeader,viewSensitivityGroups,viewColor,viewOrder)
+    colnames(viewLineType)          <<- .PLOT_LINETYPE_LABEL
+    scenarioHeader <<- cbind(viewHeader,viewSensitivityGroups,viewColor,viewLineType)
     scenarioList   <<- as.numeric(rownames(viewHeader))
 
     createWin(.MAIN_GUI_DEF_FILE,env=.GlobalEnv)
@@ -184,43 +178,56 @@ iscam <- function(reloadScenarios      = FALSE,
 }
 
 .writeSensPlots <- function(silent=.SILENT){
-  # write overlay sensitivity plots
-  assignGlobals(1)
-  assign("saveon",T,envir=.GlobalEnv)
-  val <- getWinVal()
-  uniqueSensitivityGroups <- c()  # base must be 0
-  for(scenario in 1:length(op)){
-    # count number of unique sensitivity groups
-    if(!is.element(op[[scenario]][[4]]$SensitivityGroup,uniqueSensitivityGroups) && op[[scenario]][[4]]$SensitivityGroup != 0){
-        uniqueSensitivityGroups <- c(uniqueSensitivityGroups,op[[scenario]][[4]]$SensitivityGroup)
-    }
-  }
-  for(sensitivityGroup in uniqueSensitivityGroups){
-    fig.base.vs.sens(sensitivityGroup=sensitivityGroup,
-                     whichPlot="biomass",
-                     ylimit=val$biomassYlim,
-                     useMaxYlim=val$maxBiomassYlim)
-    fig.base.vs.sens(sensitivityGroup=sensitivityGroup,
-                     whichPlot="depletion",
-                     ylimit=val$depletionYlim,
-                     useMaxYlim=val$maxDepletionYlim)
-    fig.base.vs.sens(sensitivityGroup=sensitivityGroup,
-                     whichPlot="recruits",
-                     ylimit=val$recruitmentYlim,
-                     useMaxYlim=val$maxRecruitmentYlim)
-  }
-  assign("saveon",FALSE,envir=.GlobalEnv)
+##   # write overlay sensitivity plots
+##   assignGlobals(1)
+##   assign("saveon",T,envir=.GlobalEnv)
+##   val <- getWinVal()
+##   uniqueSensitivityGroups <- c()  # base must be 0
+##   for(scenario in 1:length(op)){
+##     # count number of unique sensitivity groups
+##     if(!is.element(op[[scenario]][[4]]$SensitivityGroup,uniqueSensitivityGroups) && op[[scenario]][[4]]$SensitivityGroup != 0){
+##         uniqueSensitivityGroups <- c(uniqueSensitivityGroups,op[[scenario]][[4]]$SensitivityGroup)
+##     }
+##   }
+##   for(sensitivityGroup in uniqueSensitivityGroups){
+##     fig.base.vs.sens(sensitivityGroup=sensitivityGroup,
+##                      whichPlot="biomass",
+##                      ylimit=val$biomassYlim,
+##                      useMaxYlim=val$maxBiomassYlim)
+##     fig.base.vs.sens(sensitivityGroup=sensitivityGroup,
+##                      whichPlot="depletion",
+##                      ylimit=val$depletionYlim,
+##                      useMaxYlim=val$maxDepletionYlim)
+##     fig.base.vs.sens(sensitivityGroup=sensitivityGroup,
+##                      whichPlot="recruits",
+##                      ylimit=val$recruitmentYlim,
+##                      useMaxYlim=val$maxRecruitmentYlim)
+##   }
+##   assign("saveon",FALSE,envir=.GlobalEnv)
 }
 
-.doPlots <- function(png=TRUE){
-  # png = TRUE means save the plots, FALSE means display on Device.
+.doPlots <- function(savefig=.SAVEFIG){
+  # savefig = TRUE means save the plots, FALSE means display on screen.
   graphics.off()
   .PLOT_IS_LIVE <<- FALSE
 
   val <- getWinVal()
   s   <- val$entryScenario
+  if(val$compFitSex == "sCompFixSexC"){
+    compFitSex <- 0
+  }else if(val$compFitSex == "sCompFitSexM"){
+    compFitSex <- 1
+  }else if(val$compFitSex == "sCompFitSexF"){
+    compFitSex <- 2
+  }else{
+    compFitSex <- 0
+  }
   sgr <- val$entrySensitivityGroup
   ind <- val$entryIndex
+  # Following 2 are to scale all index x-axis to the same to make visual comparison easier
+  indfixaxis <- val$xaxisfix
+  sensindfixaxis <- val$sensxaxisfix
+
   plotMCMC  <- val$plotMCMC
   ci        <- val$entryConfidence  # Confidence interval
   pType     <- val$viewPlotType
@@ -232,6 +239,19 @@ iscam <- function(reloadScenarios      = FALSE,
              w = val$entryWidthScreen,
              h = val$entryHeightScreen)
   burnthin <- c(val$burn, val$thin)
+  showtitle <- val$showTitle
+  if(op[[s]]$inputs$data$hasGearNames){
+    currIndexName <- op[[s]]$inputs$data$gearNames[ind]
+  }else{
+    currIndexName <- ind
+  }
+
+  if(val$figureType == "sEPS"){
+    figtype <- .EPS_TYPE
+  }
+  if(val$figureType == "sPNG"){
+    figtype <- .PNG_TYPE
+  }
 
   if(val$legendLoc == "sLegendTopright"){
     leg <- "topright"
@@ -251,111 +271,103 @@ iscam <- function(reloadScenarios      = FALSE,
 
   if(.checkEntries()){
 
-    switch(pType,
+   switch(pType,
            # From iscam-gui-figures-timeseries.r
-           "sTSSpawningBiomassAllAreas"             = {plotTS(s,1,png,"SpawningBiomassAllAreas",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sTSSpawningBiomassByArea"               = {plotTS(s,2,png,"SpawningBiomassByArea",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sTSSpawningDepletionAllAreas"           = {plotTS(s,3,png,"SpawningDepletionAllAreas",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sTSSpawningDepletionByArea"             = {plotTS(s,4,png,"SpawningDepletionByArea",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sTSRecruitmentAllAreas"                 = {plotTS(s,5,png,"RecruitmentAllAreas",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sTSRecruitmentByArea"                   = {plotTS(s,6,png,"RecruitmentByArea",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
+           "sTSSpawningBiomassAllAreas"             = {plotTS(s,1,savefig,"SB",plotMCMC,ci,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sTSSpawningBiomassByArea"               = {plotTS(s,2,savefig,"SBByArea",plotMCMC,ci,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sTSVulnerableBiomassAllAreas"           = {plotTS(s,12,savefig,"VB",plotMCMC,ci,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sTSVSBiomassAllAreas"                   = {plotTS(s,12,savefig,"VB",plotMCMC,ci,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle, showSbio=TRUE)},
+           "sTSSpawningDepletionAllAreas"           = {plotTS(s,3,savefig,"Depl",plotMCMC,ci,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sTSSpawningDepletionByArea"             = {plotTS(s,4,savefig,"DeplByArea",plotMCMC,ci,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sTSRecruitmentAllAreas"                 = {plotTS(s,5,savefig,"Recr",plotMCMC,ci,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sTSRecruitmentDevsAllAreas"             = {plotTS(s,11,savefig,"RecrDevs",plotMCMC,ci,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sTSRecruitmentByArea"                   = {plotTS(s,6,savefig,"RecrByArea",plotMCMC,ci,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
            # Only MPD for Index
-           "sTSIndex"                               = {plotTS(s,7,png,"Index",FALSE,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sSPRRatio"                              = {plotTS(s,8,png,"SPRRatio",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           # Only MPD for Fishing mortality
-           "sFishingMortality"                      = {plotTS(s,9,png,"Fishing Mortality",FALSE,ci,sensGroup=sgr,index=ind,leg=leg)},
+           # Index requires a check of the current gear number so that figures for other gears do not overwrite the file
+           "sTSIndex"                               = {plotTS(s,7,savefig,paste0("Index-",currIndexName),plotMCMC,ci,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle, indfixaxis=indfixaxis)},
+           "sSPRRatio"                              = {plotTS(s,8,savefig,"SPRRatio",plotMCMC,ci,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sFishingMortality"                      = {plotTS(s,9,savefig,"F",plotMCMC,ci,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sFishingMortalityU"                     = {plotTS(s,9,savefig,"U",plotMCMC,ci,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle, plotU=TRUE)},
+           "sRefPoints"                             = {plotTS(s,10,savefig,"RefPoints",plotMCMC,ci,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
            # From iscam-gui-figures-biology.r
-           "sBiologyMeanWtAtAge"                    = {plotBiology(1,png,"BiologyMeanWtAtAge",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sBiologyMaturityAtAge"                  = {plotBiology(2,png,"BiologyMaturityAtAge",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sBiologyFecundity"                      = {plotBiology(3,png,"BiologyFecundity",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sBiologyFecundityWeight"                = {plotBiology(4,png,"BiologyFecundityWeight",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sBiologyFecundityLength"                = {plotBiology(5,png,"BiologyFecundityLength",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sBiologySpawnOutputLength"              = {plotBiology(6,png,"BiologySpawnOutputLength",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sBiologyExpectedGrowth"                 = {plotBiology(7,png,"BiologyExpectedGrowth",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sBiologyTVM"                            = {plotBiology(8,png,"BiologyTVM",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sBiologyTVGrowthPersp"                  = {plotBiology(9,png,"BiologyTVGrowthPersp",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sBiologyTVGrowthContour"                = {plotBiology(10,png,"BiologyTVGrowthContour",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sBiologyComposition"                    = {plotBiology(11,png,"BiologyComposition",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sBiologyCompositionFit"                 = {plotBiology(12,png,"BiologyCompositionFit",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sBiologyCompositionResid"               = {plotBiology(13,png,"BiologyCompositionResiduals",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sBiologyLW"                             = {plotBiology(14,png,"BiologyLengthWeightRelationship",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sBiologyVONB"                           = {plotBiology(15,png,"BiologyVonBRelationship",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
+           "sBiologyMeanWtAtAge"                    = {plotBiology(1,compFitSex,savefig,"MeanWtAtAge",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sBiologyMaturityAtAge"                  = {plotBiology(2,compFitSex,savefig,"MatAtAge",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sBiologyFecundity"                      = {plotBiology(3,compFitSex,savefig,"Fecund",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sBiologyFecundityWeight"                = {plotBiology(4,compFitSex,savefig,"FecundWeight",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sBiologyFecundityLength"                = {plotBiology(5,compFitSex,savefig,"FecundLength",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sBiologySpawnOutputLength"              = {plotBiology(6,compFitSex,savefig,"SpawnOutputLength",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sBiologyExpectedGrowth"                 = {plotBiology(7,compFitSex,savefig,"ExpectedGrowth",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sBiologyTVM"                            = {plotBiology(8,compFitSex,savefig,"TVM",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sBiologyTVGrowthPersp"                  = {plotBiology(9,compFitSex,savefig,"TVGrowthPersp",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sBiologyTVGrowthContour"                = {plotBiology(10,compFitSex,savefig,"TVGrowthContour",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sBiologyComposition"                    = {plotBiology(11,compFitSex,savefig,"Composition",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+          # Can delete this special one after ARF assessment
+           "sBiologyCompositionSpecial"             = {plotBiology(99,compFitSex,savefig,paste0("AgeCompSpecial-",currIndexName),plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sBiologyCompositionN1"                  = {plotBiology(10,compFitSex,savefig,paste0("AgeCompN1-",currIndexName),plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sBiologyCompositionFit"                 = {plotBiology(12,compFitSex,savefig,paste0("AgeCompFit-",currIndexName),plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sBiologyCompositionResid"               = {plotBiology(13,compFitSex,savefig,paste0("AgeCompResid-",currIndexName),plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sBiologyLW"                             = {plotBiology(14,compFitSex,savefig,"BioLW",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sBiologyVONB"                           = {plotBiology(15,compFitSex,savefig,"BioVonB",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sBiologyMA"                             = {plotBiology(16,compFitSex,savefig,"BioMatAge",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
            # From iscam-gui-figures-selectivities.r
-           #"sSelexLengthBasedByFleet"               = {plotSelex(1,png,"SelexLengthBasedByFleet",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           #"sSelexAgeBasedByFleet"                  = {plotSelex(2,png,"SelexAgeBasedByFleet",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           "sSelexLogisticByFleet"                  = {plotSelex(1,png,"SelexLogisticByFleet",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           "sSelexTVAtLengthSurface"                = {plotSelex(3,png,"SelexTVAtLengthSurface",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           "sSelexTVAtLengthContour"                = {plotSelex(4,png,"SelexTVAtLengthContour",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           "sSelexTVAtLenthRetentionSurface"        = {plotSelex(5,png,"SelexTVAtLenthRetentionSurface",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           "sSelexTVAtLengthRetentionContour"       = {plotSelex(6,png,"SelexTVAtLengthRetentionContour",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           "sSelexTVDiscardMortalitySurface"        = {plotSelex(7,png,"SelexTVDiscardMortalitySurface",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           "sSelexTVDiscardMortalityContour"        = {plotSelex(8,png,"SelexTVDiscardMortalityContour",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           "sSelexRetentionDiscardMortalityEndYear" = {plotSelex(9,png,"SelexRetentionDiscardMortalityEndYear",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           "sSelexTVAtAgeSurface"                   = {plotSelex(11,png,"SelexUncertainty",plotMCMC,ci,sensGroup=sgr,index=ind)},
+           #"sSelexLengthBasedByFleet"               = {plotSelex(1,savefig,"SelexLengthBasedByFleet",plotMCMC,ci,sensGroup=sgr,index=ind)},
+           #"sSelexAgeBasedByFleet"                  = {plotSelex(2,savefig,"SelexAgeBasedByFleet",plotMCMC,ci,sensGroup=sgr,index=ind)},
+           "sSelexLogisticByFleet"                  = {plotSelex(s,1,savefig,paste0("Selex-",currIndexName),plotMCMC,ci,sensGroup=sgr,ps=ps,leg=leg,index=ind,figtype=figtype,showtitle=showtitle)},
            # From iscam-gui-figures-catch.r
-           "sCatchLandings"                         = {plotCatch(s,1,png,"CatchLandings",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           #"sCatchLandingsStacked"                  = {plotCatch(s,2,png,"CatchLandingsStacked",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           "sCatchLandingsObsVsExpLandings"         = {plotCatch(s,3,png,"CatchLandingsObsVsExpLandings",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           #"sCatchTotal"                            = {plotCatch(s,4,png,"CatchTotal",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           #"sCatchTotalStacked"                     = {plotCatch(s,5,png,"CatchTotalStacked",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           #"sCatchDiscards"                         = {plotCatch(s,6,png,"CatchDiscards",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           #"sCatchDiscardsStacked"                  = {plotCatch(7,png,"CatchDiscardsStacked",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           #"sCatchDiscardFraction"                  = {plotCatch(8,png,"CatchDiscardFraction",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           #"sCatchHarvestRate"                      = {plotCatch(9,png,"CatchHarvestRate",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           #"sCatchLandingsSeasons"                  = {plotCatch(10,png,"CatchLandingsSeasons",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           #"sCatchLandingsSeasonsStacked"           = {plotCatch(11,png,"CatchLandingsSeasonsStacked",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           #"sCatchTotalSeasons"                     = {plotCatch(12,png,"CatchTotalSeasons",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           #"sCatchTotalSeasonsStacked"              = {plotCatch(13,png,"CatchTotalSeasonsStacked",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           #"sCatchDiscardsSeasons"                  = {plotCatch(14,png,"CatchDiscardsSeasons",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           #"sCatchDiscardsSeasonsStacked"           = {plotCatch(15,png,"CatchDiscardsSeasonsStacked",plotMCMC,ci,sensGroup=sgr,index=ind)},
-           "sCatchAnnualMeanWt" 		                = {plotCatch(s,16,png,"CatchFitAnnualMeanWeight",plotMCMC,ci,sensGroup=sgr,index=ind)},
+           "sCatchLandings"                         = {plotCatch(s,1,savefig,"Landings",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           #"sCatchLandingsStacked"                  = {plotCatch(s,2,savefig,"CatchLandingsStacked",plotMCMC,ci,sensGroup=sgr,index=ind)},
+           "sCatchLandingsObsVsExpLandings"         = {plotCatch(s,3,savefig,"LandingsObsVsExp",plotMCMC,ci,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sCatchAnnualMeanWt" 		                = {plotCatch(s,4,savefig,"FitAnnualMeanWeight",plotMCMC,ci,sensGroup=sgr,index=ind,figtype=figtype,showtitle=showtitle)},
            # MCMC diagnostics, convergence, and parameter plots
            # From iscam-gui-figures-mcmc-convergence.r
-           "sMCMCTrace"                             = {plotConvergence(s,1,png,"Trace",ps=ps,burnthin=burnthin)},
-           "sMCMCAutocor"                           = {plotConvergence(s,2,png,"Autocor",ps=ps,burnthin=burnthin)},
-           "sMCMCDensity"                           = {plotConvergence(s,3,png,"Density",ps=ps,burnthin=burnthin)},
-           "sParameterPairs"                        = {plotConvergence(s,4,png,"Pairs",ps=ps,burnthin=burnthin)},
-           "sPriorsVsPosts"                         = {plotConvergence(s,5,png,"PriorsPosteriors",ps=ps,burnthin=burnthin,exFactor=1.5,showEntirePrior=T)},
-           "sVariancePartitions"                    = {plotConvergence(s,6,png,"VariancePartitions",ps=ps,burnthin=burnthin)},
+           "sMCMCTrace"                             = {plotConvergence(s,1,savefig,"Trace",ps=ps,burnthin=burnthin,figtype=figtype,showtitle=showtitle)},
+           "sMCMCAutocor"                           = {plotConvergence(s,2,savefig,"Autocor",ps=ps,burnthin=burnthin,figtype=figtype,showtitle=showtitle)},
+           "sMCMCDensity"                           = {plotConvergence(s,3,savefig,"Density",ps=ps,burnthin=burnthin,figtype=figtype,showtitle=showtitle)},
+           "sParameterPairs"                        = {plotConvergence(s,4,savefig,"Pairs",ps=ps,burnthin=burnthin,figtype=figtype,showtitle=showtitle)},
+           "sPriorsVsPosts"                         = {plotConvergence(s,5,savefig,"PriorsPosts",ps=ps,burnthin=burnthin,figtype=figtype,showtitle=showtitle,exFactor=1.5,showEntirePrior=T)},
+           "sVariancePartitions"                    = {plotConvergence(s,6,savefig,"VariancePartitions",ps=ps,burnthin=burnthin,figtype=figtype,showtitle=showtitle)},
            #"sMCMCGeweke"                            = {fig.mcmc.geweke(scenario=val$entryScenario)},
            #"sMCMCGelman"                            = {fig.mcmc.gelman(scenario=val$entryScenario)},
            # From iscam-gui-figures-timeseries.r
-           "sSensSB"                                = {plotTS(s,1,png,"SpawningBiomass",plotMCMC,ci,multiple=TRUE,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sSensBRatio"                            = {plotTS(s,3,png,"Depletion",plotMCMC,ci,multiple=TRUE,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           "sSensRecruit"                           = {plotTS(s,5,png,"Recruitment",plotMCMC,ci,multiple=TRUE,sensGroup=sgr,index=ind,ps=ps,leg=leg,recrOffset=val$entryRecrOffset)},
+           "sSensSB"                                = {plotTS(s,1,savefig,"SB",plotMCMC,ci,multiple=TRUE,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sSensVB"                                = {plotTS(s,12,savefig,"VB",plotMCMC,ci,multiple=TRUE,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sSensBRatio"                            = {plotTS(s,3,savefig,"Depl",plotMCMC,ci,multiple=TRUE,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sSensRecruit"                           = {plotTS(s,5,savefig,"Recr",plotMCMC,ci,multiple=TRUE,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle,recrOffset=val$entryRecrOffset)},
            # No sensitivity plot for MCMC Indices
-           "sSensIndex"                             = {plotTS(s,7,png,"Index",FALSE,ci,multiple=TRUE,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           #"sSensSPRRatio"                          = {plotTS(7,png,"SPRRatio",plotMCMC,ci,TRUE,btarg=val$entryBtarg,blim=val$entryBlim)},
-           #"sSensRecruitU"                          = {plotTS(8,png,"RecruitUncertainty",plotMCMC,ci,TRUE)},
+           "sSensIndex"                             = {plotTS(s,7,savefig,paste0("Index-",currIndexName),FALSE,ci,multiple=TRUE,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle, indfixaxis=sensindfixaxis)},
+           #"sSensSPRRatio"                          = {plotTS(7,savefig,"SPRRatio",plotMCMC,ci,TRUE,btarg=val$entryBtarg,blim=val$entryBlim)},
+           #"sSensRecruitU"                          = {plotTS(8,savefig,"RecruitUncertainty",plotMCMC,ci,TRUE)},
            # No sensitivity plot for MCMC Fs yet, it would likely be too busy anyway
-           "sSensF"                                 = {plotTS(s,9,png,"MeanF",FALSE,ci,multiple=TRUE,sensGroup=sgr,index=ind,ps=ps,leg=leg)},
-           #"sSensRecruitDev"                        = {plotTS(9,png,"RecruitmentDev",plotMCMC,ci,TRUE)},
-           #"sSensIndexLog"                          = {plotTS(12,png,"IndexLog",plotMCMC,ci,TRUE)},
-           #"sSensDensity"                           = {plotTS(13,png,"Density",plotMCMC,ci,TRUE)},
+           "sSensF"                                 = {plotTS(s,9,savefig,"F",plotMCMC,ci,multiple=TRUE,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sSensU"                                 = {plotTS(s,9,savefig,"U",plotMCMC,ci,multiple=TRUE,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle, plotU=TRUE)},
+           "sSensRefPoints"                         = {plotTS(s,10,savefig,"RefPoints",plotMCMC,ci,multiple=TRUE,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sSensRecruitDev"                        = {plotTS(s,11,savefig,"RecrDevs",plotMCMC,ci,multiple=TRUE,sensGroup=sgr,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           #"sSensIndexLog"                          = {plotTS(12,savefig,"IndexLog",plotMCMC,ci,TRUE)},
+           #"sSensDensity"                           = {plotTS(13,savefig,"Density",plotMCMC,ci,TRUE)},
+           "sSensCatchFit"                          = {plotCatch(s,3,savefig,"CatchFit",plotMCMC,ci,multiple=TRUE,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sSensSelex"                              = {plotSelex(s,1,savefig,paste0("Selex-",currIndexName),plotMCMC,ci,multiple=TRUE,sensGroup=sgr,index=ind,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+
            # Plot Retrospectives
-           "sRetroSB"                               = {plotTS(s,1,png,"RetroSpawningBiomass",retros=TRUE,index=ind,ps=ps,leg=leg)},
-           "sRetroD"                                = {plotTS(s,3,png,"RetroDepletion",retros=TRUE,index=ind,ps=ps,leg=leg)},
-           "sRetroRec"                              = {plotTS(s,5,png,"RetroSpawningBiomass",retros=TRUE,index=ind,ps=ps,leg=leg)},
-           "sRetroSquid"                            = {plotTS(plotNum=99,retros=TRUE,
-                                                              endyrvec = val$entryEndyr:val$entryStartyr,
-                                                              cohorts = val$entryFirstCohort:val$entryLastCohort,
-                                                              png=png,fileText="RetroSquid")},
-           # Plot runtime values returned from ADMB
-           "sObjFuncVal"                            = {plotConvergence(1,png,"ObjectiveFunctionValue")},
-           "sMaxGrad"                               = {plotConvergence(2,png,"MaximumGradient")},
-           "sFuncEvals"                             = {plotConvergence(3,png,"FunctionEvaluations")},
-           "sHangCodes"                             = {plotConvergence(4,png,"HangCodes")},
-           "sExitCodes"                             = {plotConvergence(5,png,"ExitCodes")},
+           "sRetroSB"                               = {plotTS(s,1,savefig,"RetroSB",retros=TRUE,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sRetroD"                                = {plotTS(s,3,savefig,"RetroDepl",retros=TRUE,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sRetroRec"                              = {plotTS(s,5,savefig,"RetroRecr",retros=TRUE,index=ind,burnthin=burnthin,ps=ps,leg=leg,figtype=figtype,showtitle=showtitle)},
+           "sRetroSquid"                            = {plotCohorts(s,savefig=savefig,fileText="RetroSquid",ps=ps,leg=leg,figtype=figtype)},
+           # Plot runtime values comparisons returned from ADMB
+           "sObjFuncVal"                            = {plotDiagnostics(s, 1, savefig,"ObjFunVal",burnthin=burnthin,figtype=figtype,showtitle=showtitle)},
+           "sMaxGrad"                               = {plotDiagnostics(s, 2, savefig,"MaxGrad",burnthin=burnthin,figtype=figtype,showtitle=showtitle)},
+           "sFuncEvals"                             = {plotDiagnostics(s, 3, savefig,"FunEvals",burnthin=burnthin,figtype=figtype,showtitle=showtitle)},
+           "sHangCodes"                             = {plotDiagnostics(s, 4, savefig,"HangCodes",burnthin=burnthin,figtype=figtype,showtitle=showtitle)},
+           "sExitCodes"                             = {plotDiagnostics(s, 5, savefig,"ExitCodes",burnthin=burnthin,figtype=figtype,showtitle=showtitle)},
            {
              # Default
            }
-           ) # End switch
+          )
   }
   .PLOT_IS_LIVE <<- TRUE
   return(invisible())
 }
 
-.subView <- function(png=.PNG, silent = .SILENT){
+.subView <- function(savefig=.SAVEFIG, silent = .SILENT){
   act <- getWinAct()
   val <- getWinVal()
   triggerPlot <- TRUE # this triggers plotting upon completion of this call
@@ -478,9 +490,13 @@ iscam <- function(reloadScenarios      = FALSE,
          },
          "nextGroup" = {
            nextGroup <- val$entryIndex + 1
-           if(nextGroup > max(op[[val$entrySensitivityGroup]]$inputs$data$ngear)){
-             nextGroup <- max(op[[val$entrySensitivityGroup]]$inputs$data$ngear)
-           }
+           # Set this to work for ngears.
+           #if(nextGroup > op[[scenario]]$inputs$data$ngear){
+           #  nextGroup <- op[[scenario]]$inputs$data$ngear
+           #}
+           ## if(nextGroup > length(op[[scenario]]$inputs$data$indices)){
+           ##   nextGroup <- length(op[[scenario]]$inputs$data$indices)
+           ## }
            setWinVal(c(entryIndex=nextGroup))
          },
          # Write the plots and tables to disk
@@ -538,7 +554,7 @@ iscam <- function(reloadScenarios      = FALSE,
                                      scenario = row,
                                      default = FALSE)
              op[[row]]$inputs$color <<- val$scenarioHeader$Color[[row]]
-             op[[row]]$inputs$order <<- val$scenarioHeader$Order[[row]]
+             op[[row]]$inputs$linetype <<- val$scenarioHeader$Line[[row]]
              op[[row]]$inputs$sensitivityGroup <<- val$scenarioHeader$Group[[row]]
              cat("\n")
            }
@@ -560,13 +576,13 @@ iscam <- function(reloadScenarios      = FALSE,
            .runAllRetros()
          },
          "saveCurrFigure" = {
-           .doPlots(png=TRUE)
+           .doPlots(savefig=TRUE)
          },
          "changeBtarg" = {
-           .doPlots(png=png)
+           .doPlots(savefig=savefig)
          },
          "changeBlim" = {
-           .doPlots(png=png)
+           .doPlots(savefig=savefig)
          },
          "openBioDataFile" = {
            scenario <- val$entryScenario
@@ -582,21 +598,31 @@ iscam <- function(reloadScenarios      = FALSE,
            print(surveyList)
          },
          "editLWTPL" = {
-           fn <- file.path(.BIODATA_DIR_NAME, .LW_TPL_FILE_NAME)
+           fn <- file.path(.BIODATA_DIR_NAME, .LW_EXE_BASE_NAME, .LW_TPL_FILE_NAME)
            editCall <- paste(.EDITOR, fn)
            shell(editCall, wait=F)
          },
          "editVONBTPL" = {
-           fn <- file.path(.BIODATA_DIR_NAME, .VONB_TPL_FILE_NAME)
+           fn <- file.path(.BIODATA_DIR_NAME, .VONB_EXE_BASE_NAME, .VONB_TPL_FILE_NAME)
+           editCall <- paste(.EDITOR, fn)
+           shell(editCall, wait=F)
+         },
+         "editMATPL" = {
+           fn <- file.path(.BIODATA_DIR_NAME, .MA_EXE_BASE_NAME, .MA_TPL_FILE_NAME)
            editCall <- paste(.EDITOR, fn)
            shell(editCall, wait=F)
          },
          "runBio" = {
+           if(!exists("biodata", envir = .GlobalEnv)){
+             cat0(.PROJECT_NAME,"->",getCurrFunc(),"Global object 'biodata' does not exist. Load a datafile and try again.")
+             return(NULL)
+           }
            scenario <- val$entryScenario
            ages  <- .parseAges(val$entryAges)
            areas <- .parseAreas(val$entryAreas)
+           surveys <- .parseSurveys(val$entrySurveys)
            # Assumes surveyKeys exists globally!
-           survey <- surveyKeys[val$dlSurveyList.id]
+           #survey <- surveyKeys[val$dlSurveyList.id]
            splitSex <- FALSE
            if(val$sexType == "sSplit"){
              splitSex <- TRUE
@@ -607,8 +633,12 @@ iscam <- function(reloadScenarios      = FALSE,
              # model = 2 means it is a vonB model
              model <- 2
            }
+           if(val$lwvType == "sMA"){
+             # model = 3 means it is a maturity/age model
+             model <- 3
+           }
            .runBioModel(model = model, ages = ages,
-                        areas=areas, splitSex = splitSex, survey = survey,
+                        areas = areas, splitSex = splitSex, surveys = surveys,
                         multLen = val$entryLengthMult,
                         multWt  = val$entryWeightMult)
          },
@@ -620,7 +650,7 @@ iscam <- function(reloadScenarios      = FALSE,
 
   # Whichever radio button is selected will now be plotted for the scenario
   if(triggerPlot || (!is.null(dev.list()))){
-    .doPlots(png=png)
+    .doPlots(savefig=savefig)
   }
 }
 
@@ -801,7 +831,13 @@ iscam <- function(reloadScenarios      = FALSE,
   for(retro in 1:retroYears){
     # Copy the current model's directory 'retroYears' times, with
     #  each new directory being the number of years subtracted
-    destDir <- file.path(srcDir,paste0(.RETRO_DIR_BASE,retro))
+
+    # Must make retro number a two-character string so that Retrospective10 is not after Retrospective1 which causes issues later
+    retrostr <- as.character(retro)
+    if(nchar(retrostr) == 1){
+      retrostr <- paste0("0",retrostr)
+    }
+    destDir <- file.path(srcDir,paste0(.RETRO_DIR_BASE,retrostr))
     files <- dir(srcDir)
     for(ind in 1:length(.OUTPUT_FILES)){
       # Remove any output files from the copy source so as not to mess up the retro directory
@@ -845,7 +881,12 @@ iscam <- function(reloadScenarios      = FALSE,
   cat("Don't touch the GUI - wait until a message appears stating the retrospective runs have finished.\n\n")
   tcl("update") # updates window text
   for(retro in 1:retroYears){
-    retroDir <- file.path(currDir, op[[scenario]]$names$dir, paste0(.RETRO_DIR_BASE,retro))
+    # Must make retro number a two-character string so that Retrospective10 is not after Retrospective1 which causes issues later
+    retrostr <- as.character(retro)
+    if(nchar(retrostr) == 1){
+      retrostr <- paste0("0",retrostr)
+    }
+    retroDir <- file.path(currDir, op[[scenario]]$names$dir, paste0(.RETRO_DIR_BASE,retrostr))
     # change to this scenario's directory
     setwd(retroDir)
     modelCall <- .EXE_FILE_NAME

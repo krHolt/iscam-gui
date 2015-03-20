@@ -7,9 +7,7 @@
 # Development Date  : August 2013 - Present
 #**********************************************************************************
 
-.loadData <- function(reloadScenarios      = TRUE,
-                      copyModelExecutables = FALSE,
-                      silent               = .SILENT){
+.loadData <- function(reloadScenarios      = TRUE){
   # .loadData()
   # loads all model output data from all scenarios.
   # - reloadScenarios TRUE/FALSE - reload the data from all model output files in all scenarios.
@@ -25,9 +23,6 @@
     modelLoaded <<- TRUE
   }else{
     cat0(.PROJECT_NAME,"->",getCurrFunc(),"Using previously loaded data for GUI.  Use ",.MAIN_FUNCTION_CALL,"(TRUE) to reload the Scenarios.\n")
-  }
-  if(copyModelExecutables){
-    .copyExecutableToScenariosDirectories()
   }
 }
 
@@ -145,9 +140,9 @@
                           sensitivityGroup  = FALSE,
                           lastCommandRun    = FALSE)
   tmp$outputs     <- list(mpd               = NULL, # Report file is loaded in here
-                          mcmc              = NULL,
-                          par               = NULL,
-                          retro             = NULL) # The retrospective plotting code looks at this.
+                          mcmc              = NULL, # mcmc files are loaded in here
+                          par               = NULL, # par file loaded in here
+                          retros            = NULL) # The retrospective plotting code looks at this.
   tmp$names$scenario       <- basename(dired)
   tmp$names$dir            <- dired
   tmp$names$figDir         <- file.path(dired,.FIGURES_DIR_NAME)
@@ -317,21 +312,20 @@
   if(!is.na(ind)){
     dirList <- dirList[-ind]
   }
+  # Try to load the retrospective runs
   if(length(dirList) > 0){
     tmp$outputs$retros <- .loadScenarios(dired = dired)
-    tmp$outputs$retroSummary <- NULL
     modelList <- NULL
     modelList[[1]] <- tmp$outputs$mpd
     for(retro in 1:length(tmp$outputs$retros)){
       modelList[[retro+1]] <- tmp$outputs$retros[[retro]]$outputs$mpd
     }
-    #tmp$outputs$retrosSummary <- paste0(currFuncName,"NEED TO IMPLEMENT retro loading, was SSsummarize!")
+  }else{
+    tmpFdFigures <- file.path(dired,.FIGURES_DIR_NAME)
+    tmpFdTables  <- file.path(dired,.TABLES_DIR_NAME)
+    dir.create(tmpFdFigures,showWarnings=!silent)
+    dir.create(tmpFdTables,showWarnings=!silent)
   }
-
-  tmpFdFigures <- file.path(dired,.FIGURES_DIR_NAME)
-  tmpFdTables  <- file.path(dired,.TABLES_DIR_NAME)
-  dir.create(tmpFdFigures,showWarnings=!silent)
-  dir.create(tmpFdTables,showWarnings=!silent)
   return(tmp)
 }
 
@@ -352,7 +346,7 @@
   sList$inputs$sensitivityGroup <- tmp[1,]
   sList$fileSuccess$sensitivityGroup <- TRUE
   sList$inputs$color <- tmp[2,]
-  sList$inputs$order <- tmp[3,] # plotting order
+  sList$inputs$linetype <- tmp[3,] # plotting linetype
   return(sList)
 }
 
@@ -376,8 +370,8 @@
                          .DEFAULT_SENS_GROUP,
                          .PLOT_COLOR_TEXT,
                          .DEFAULT_PLOT_COLOR,
-                         .ORDER_TEXT,
-                         .DEFAULT_PLOT_ORDER))
+                         .LINETYPE_TEXT,
+                         .DEFAULT_LINETYPE))
       writeFile <- TRUE
     }
   }else{
@@ -392,8 +386,8 @@
                        val$scenarioHeader$Group[scenario],
                        .PLOT_COLOR_TEXT,
                        val$scenarioHeader$Color[scenario],
-                       .ORDER_TEXT,
-                       val$scenarioHeader$Order[scenario]
+                       .LINETYPE_TEXT,
+                       val$scenarioHeader$Line[scenario]
                        ))
     writeFile <- TRUE
   }
@@ -626,12 +620,79 @@ readData <- function(file = NULL, verbose = FALSE){
   # And returns a list of the contents
 
   data <- readLines(file, warn=FALSE)
+  tmp <- list()
+  ind <- 0
 
   # Remove any empty lines
   data <- data[data != ""]
 
   # remove preceeding whitespace if it exists
   data <- gsub("^[[:blank:]]+","",data)
+
+  # Get the element number for the "Gears" names if present
+  dat <- grep("^#.*Gears:.+",data)
+  tmp$hasGearNames <- FALSE
+  if(length(dat >0)){
+    # The gear names were in the file
+    gearNamesStr <- gsub("^#.*Gears:(.+)","\\1",data[dat])
+    gearNames <- strsplit(gearNamesStr,",")[[1]]
+    tmp$gearNames <- gsub("^[[:blank:]]+","",gearNames)
+    tmp$hasGearNames <- TRUE
+  }
+
+  # Get the element number for the "IndexGears" names if present
+  ## dat <- grep("^#.*IndexGears:.+",data)
+  ## tmp$hasIndexGearNames <- FALSE
+  ## if(length(dat >0)){
+  ##   # The gear names were in the file
+  ##   indexGearNamesStr <- gsub("^#.*IndexGears:(.+)","\\1",data[dat])
+  ##   indexGearNames <- strsplit(indexGearNamesStr,",")[[1]]
+  ##   tmp$indexGearNames <- gsub("^[[:blank:]]+","",indexGearNames)
+  ##   tmp$hasIndexGearNames <- TRUE
+  ## }
+
+  ## # Get the element number for the "AgeGears" names if present (gears with age comp data)
+  ## dat <- grep("^#.*AgeGears:.+",data)
+  ## tmp$hasAgeGearNames <- FALSE
+  ## if(length(dat >0)){
+  ##   # The gear names were in the file
+  ##   ageGearNamesStr <- gsub("^#.*AgeGears:(.+)","\\1",data[dat])
+  ##   ageGearNames <- strsplit(ageGearNamesStr,",")[[1]]
+  ##   tmp$ageGearNames <- gsub("^[[:blank:]]+","",ageGearNames)
+  ##   tmp$hasAgeGearNames <- TRUE
+  ## }
+
+  # Get the element number for the "CatchUnits" if present
+  dat <- grep("^#.*CatchUnits:.+",data)
+  if(length(dat >0)){
+    # The catch units comment was in the file
+    catchUnitsStr <- gsub("^#.*CatchUnits:(.+)","\\1",data[dat])
+    tmp$catchUnits <- gsub("^[[:blank:]]+","",catchUnitsStr)
+  }
+
+  # Get the element number for the "IndexUnits" if present
+  dat <- grep("^#.*IndexUnits:.+",data)
+  if(length(dat >0)){
+    # The catch units comment was in the file
+    indexUnitsStr <- gsub("^#.*IndexUnits:(.+)","\\1",data[dat])
+    tmp$indexUnits <- gsub("^[[:blank:]]+","",indexUnitsStr)
+  }
+
+  # Save the number of specimens per year (comment at end of each age comp
+  # line), eg. #135 means 135 specimens contributed to the age proportions for that year
+  agen <- vector()
+  # Match age comp lines which have N's as comments
+  tmp$hasAgeCompN <- FALSE
+  pattern <- "^[[:digit:]]{4}[[:space:]]+[[:digit:]][[:space:]]+[[:digit:]][[:space:]]+[[:digit:]][[:space:]]+[[:digit:]].*#([[:digit:]]+).*"
+  dat <- data[grep(pattern,data)]
+  if(length(dat) > 0){
+    for(ageN in 1:length(dat)){
+      agen[ageN] <- sub(pattern,"\\1",dat[ageN])
+    }
+  }
+  # N is now a vector of values of N for the age comp data.
+  # The individual gears have not yet been parsed out, this will
+  # happen later when the age comps are read in.
 
   # Get the element numbers which start with #.
   dat <- grep("^#.*",data)
@@ -649,8 +710,6 @@ readData <- function(file = NULL, verbose = FALSE){
   # Here we parse them into a list structure
   # This is dependent on the current format of the DAT file and needs to
   # be updated whenever the DAT file changes format
-  tmp <- list()
-  ind <- 0
   tmp$narea  <- as.numeric(dat[ind <- ind + 1])
   tmp$ngroup <- as.numeric(dat[ind <- ind + 1])
   tmp$nsex   <- as.numeric(dat[ind <- ind + 1])
@@ -659,8 +718,13 @@ readData <- function(file = NULL, verbose = FALSE){
   tmp$sage   <- as.numeric(dat[ind <- ind + 1])
   tmp$nage   <- as.numeric(dat[ind <- ind + 1])
   tmp$ngear  <- as.numeric(dat[ind <- ind + 1])
+
   # Gear allocation
   tmp$alloc  <- as.numeric(strsplit(dat[ind <- ind + 1],"[[:blank:]]+")[[1]])
+  if(!tmp$hasGearNames){
+    tmp$gearNames <- 1:length(tmp$alloc)
+  }
+
   # Age-schedule and population parameters
   tmp$linf   <- as.numeric(strsplit(dat[ind <- ind + 1],"[[:blank:]]+")[[1]])
   tmp$k      <- as.numeric(strsplit(dat[ind <- ind + 1],"[[:blank:]]+")[[1]])
@@ -674,6 +738,7 @@ readData <- function(file = NULL, verbose = FALSE){
   # Catch data
   tmp$nctobs <- as.numeric(dat[ind <- ind + 1])
   tmp$catch  <- matrix(NA, nrow = tmp$nctobs, ncol = 7)
+
   for(row in 1:tmp$nctobs){
     tmp$catch[row,] <- as.numeric(strsplit(dat[ind <- ind + 1],"[[:blank:]]+")[[1]])
   }
@@ -695,6 +760,9 @@ readData <- function(file = NULL, verbose = FALSE){
   }
   # Age composition data are a ragged object and are stored as a list of matrices
   tmp$nagears     <- as.numeric(dat[ind <- ind + 1])
+  #if(!tmp$hasAgeGearNames){
+  #  tmp$ageGearNames <- 1:length(tmp$nagears)
+  #}
   tmp$nagearsvec  <- as.numeric(strsplit(dat[ind <- ind + 1],"[[:blank:]]+")[[1]])
   tmp$nagearssage <- as.numeric(strsplit(dat[ind <- ind + 1],"[[:blank:]]+")[[1]])
   tmp$nagearsnage <- as.numeric(strsplit(dat[ind <- ind + 1],"[[:blank:]]+")[[1]])
@@ -714,7 +782,14 @@ readData <- function(file = NULL, verbose = FALSE){
      colnames(tmp$agecomps[[gear]]) <- c("year","gear","area","group","sex",tmp$nagearssage[gear]:tmp$nagearsnage[gear])
    }
   }
-
+  # Build a list of age comp gear N's
+  tmp$agearsN <- list()
+  start <- 1
+  for(ng in 1:length(tmp$nagearsvec)){
+    end <- start + tmp$nagearsvec[ng] - 1
+    tmp$agearsN[[ng]] <- agen[start:end]
+    start <- end + 1
+  }
   # Empirical weight-at-age data
   tmp$nwttab <- as.numeric(dat[ind <- ind + 1])
   tmp$nwtobs <- as.numeric(dat[ind <- ind + 1])
@@ -728,17 +803,20 @@ readData <- function(file = NULL, verbose = FALSE){
     for(row in 1:nrows){
       tmp$waa[row,] <- as.numeric(strsplit(dat[ind <- ind + 1],"[[:blank:]]+")[[1]])
     }
-    colnames(tmp$indices) <- c("year","gear","area","group","sex",tmp$sage:tmp$nage)
-    # Annual Mean Weight data
+    colnames(tmp$waa) <- c("year","gear","area","group","sex",tmp$sage:tmp$nage)
+   }
+
+   # Annual Mean Weight data
     # Catch data
     tmp$nmeanwt <- as.numeric(dat[ind <- ind + 1])
     tmp$nmeanwtobs <- as.numeric(dat[ind <- ind + 1])
-    tmp$meanwtdata  <- matrix(NA, nrow = sum(tmp$nmeanwtobs), ncol = 7)
-    for(row in 1:sum(tmp$nmeanwtobs)){
-      tmp$meanwtdata[row,] <- as.numeric(strsplit(dat[ind <- ind + 1],"[[:blank:]]+")[[1]])
-    }
-    colnames(tmp$meanwtdata) <- c("year","meanwt","gear","area","group","sex","timing")
-  }
+    if(tmp$nmeanwtobs >0){
+	    tmp$meanwtdata  <- matrix(NA, nrow = sum(tmp$nmeanwtobs), ncol = 7)
+	    for(row in 1:sum(tmp$nmeanwtobs)){
+	      tmp$meanwtdata[row,] <- as.numeric(strsplit(dat[ind <- ind + 1],"[[:blank:]]+")[[1]])
+	    }
+	    colnames(tmp$meanwtdata) <- c("year","meanwt","gear","area","group","sex","timing")
+   }
   tmp$eof <- as.numeric(dat[ind <- ind + 1])
 
   return(tmp)
@@ -784,13 +862,13 @@ readControl <- function(file = NULL, ngears = NULL, nagears = NULL, verbose = FA
   npar <- as.numeric(dat1)
   paramNames <- vector()
   # Lazy matching with # so that the first instance matches, not any other
-  pattern <- "^.*#[[:blank:]]*([[:alnum:]]+_*[[:alnum:]]*) +.*"
+  #pattern <- "^.*#[[:blank:]]*([[:alnum:]]+_*[[:alnum:]]*) +.*"
+  pattern <- "^.*?#([[:alnum:]]+_*[[:alnum:]]*).*"
   for(paramName in 1:npar){
     # Each parameter line in dat which starts at index 2,
     # retrieve the parameter name for that line
     paramNames[paramName] <- sub(pattern,"\\1",dat[paramName+1])
   }
-
   # Now that parameter names are stored, parse the file.
   # remove comments which come at the end of a line
   dat <- gsub("#.*","",dat)
@@ -841,7 +919,14 @@ readControl <- function(file = NULL, ngears = NULL, nagears = NULL, verbose = FA
   maxblock <- max(tmp$sel[10,])
   tmp$syrtimeblock <- matrix(nrow=ngears, ncol=maxblock)
   for(ng in 1:ngears){
-    tmp$syrtimeblock[ng,] <- as.numeric(strsplit(dat[ind <- ind + 1],"[[:blank:]]+")[[1]])
+    # pad the vector with NA's to make it the right size if it isn't maxblocks size
+    tmpvec <- as.numeric(strsplit(dat[ind <- ind + 1],"[[:blank:]]+")[[1]])
+    if(length(tmpvec) < maxblock){
+      for(i in (length(tmpvec) + 1):maxblock){
+        tmpvec[i] <- NA
+      }
+    }
+    tmp$syrtimeblock[ng,] <- tmpvec
   }
 
   # Priors for survey Q, one column for each survey
@@ -1002,10 +1087,12 @@ readMCMC <- function(dired = NULL, verbose = TRUE){
     cat0(.PROJECT_NAME,"->",currFuncName,"You must supply a directory name (dired). Returning NULL.")
     return(NULL)
   }
-  mcmcfn    <- file.path(dired,.MCMC_FILE_NAME)
-  mcmcsbtfn <- file.path(dired,.MCMC_BIOMASS_FILE_NAME)
-  mcmcrtfn  <- file.path(dired,.MCMC_RECRUITMENT_FILE_NAME)
-  mcmcftfn  <- file.path(dired,.MCMC_FISHING_MORT_FILE_NAME)
+  mcmcfn     <- file.path(dired,.MCMC_FILE_NAME)
+  mcmcsbtfn  <- file.path(dired,.MCMC_BIOMASS_FILE_NAME)
+  mcmcrtfn   <- file.path(dired,.MCMC_RECRUITMENT_FILE_NAME)
+  mcmcrdevfn <- file.path(dired,.MCMC_RECRUITMENT_DEVS_FILE_NAME)
+  mcmcftfn   <- file.path(dired,.MCMC_FISHING_MORT_FILE_NAME)
+  mcmcvbtfn  <- file.path(dired,.MCMC_VULN_BIOMASS_FILE_NAME)
 
   tmp        <- list()
   tmp$params <- read.csv(mcmcfn)
@@ -1015,7 +1102,10 @@ readMCMC <- function(dired = NULL, verbose = TRUE){
   tmp$rt     <- extractGroupMatrices(rt, prefix = "rt")
   ft         <- read.csv(mcmcftfn)
   tmp$ft     <- extractAreaSexMatrices(ft, prefix = "ft")
-
+  rdev       <- read.csv(mcmcrdevfn)
+  tmp$rdev   <- extractGroupMatrices(rdev, prefix = "rdev")
+  vbt        <- read.csv(mcmcvbtfn)
+  tmp$vbt    <- extractAreaSexMatrices(vbt, prefix = "vbt")
   return(tmp)
 }
 

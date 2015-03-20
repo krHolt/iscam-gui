@@ -42,6 +42,8 @@ if(.OS == "Darwin"){
 .FIGURES_TIMESERIES_SOURCE       <- paste0(.PROJECT_NAME,"-figures-timeseries.r")
 .FIGURES_CATCH_SOURCE            <- paste0(.PROJECT_NAME,"-figures-catch.r")
 .FIGURES_MCMC_SOURCE             <- paste0(.PROJECT_NAME,"-figures-mcmc-diagnostics.r")
+.FIGURES_MLE_SOURCE              <- paste0(.PROJECT_NAME,"-figures-mle-diagnostics.r")
+.FIGURES_RETROSPECTIVES_SOURCE   <- paste0(.PROJECT_NAME,"-figures-retrospectives.r")
 
 # Plotting theme (ggplot). Only used in observed catch plot at this point.
 .PLOT_THEME                      <- theme_bw(11)
@@ -49,18 +51,21 @@ if(.OS == "Darwin"){
 # GUI definition files (see PBSModelling package)
 .MAIN_GUI_DEF_FILE               <- paste0(.PROJECT_NAME,"-gui-specs.txt")
 
-# iScam, lengthweight, and vonB model executables location
+# iScam, lengthweight, vonB, and maturityage model executables location
 .EXE_BASE_NAME                   <- "iscam"
 .LW_EXE_BASE_NAME                <- "lengthweight"
 .VONB_EXE_BASE_NAME              <- "vonb"
+.MA_EXE_BASE_NAME                <- "maturityage"
 if(.OS == "Linux" || .OS == "Darwin"){
   .EXE_FILE_NAME                 <- .EXE_BASE_NAME
-  .LW_EXE_FILE_NAME              <- .LW_EXE_BASE_NAME
-  .VONB_EXE_FILE_NAME            <- .VONB_EXE_BASE_NAME
+  .LW_EXE_FILE_NAME              <- paste0("./",.LW_EXE_BASE_NAME)
+  .VONB_EXE_FILE_NAME            <- paste0("./",.VONB_EXE_BASE_NAME)
+  .MA_EXE_FILE_NAME              <- paste0("./",.MA_EXE_BASE_NAME)
 }else{
   .EXE_FILE_NAME                 <- paste0(.EXE_BASE_NAME,".exe")
   .LW_EXE_FILE_NAME              <- paste0(.LW_EXE_BASE_NAME,".exe")
   .VONB_EXE_FILE_NAME            <- paste0(.VONB_EXE_BASE_NAME,".exe")
+  .MA_EXE_FILE_NAME              <- paste0(.MA_EXE_BASE_NAME,".exe")
 }
 .EXE_FILE_NAME_FULL_PATH         <- file.path("..","iSCAM","src","admb-code",.EXE_FILE_NAME)
 
@@ -78,6 +83,9 @@ if(.OS == "Linux" || .OS == "Darwin"){
 .VONB_DAT_FILE_NAME              <- paste0(.VONB_EXE_BASE_NAME,".dat")
 .VONB_TPL_FILE_NAME              <- paste0(.VONB_EXE_BASE_NAME,".tpl")
 .VONB_REP_FILE_NAME              <- paste0(.VONB_EXE_BASE_NAME,".rep")
+.MA_DAT_FILE_NAME                <- paste0(.MA_EXE_BASE_NAME,".dat")
+.MA_TPL_FILE_NAME                <- paste0(.MA_EXE_BASE_NAME,".tpl")
+.MA_REP_FILE_NAME                <- paste0(.MA_EXE_BASE_NAME,".rep")
 
 # Sensitivity file name (for grouping sensitivities together on plots)
 .SCENARIO_INFO_FILE_NAME         <- "ScenarioInfo.txt"
@@ -86,7 +94,9 @@ if(.OS == "Linux" || .OS == "Darwin"){
 .MCMC_FILE_NAME                  <- "iscam_mcmc.csv"
 .MCMC_BIOMASS_FILE_NAME          <- "iscam_sbt_mcmc.csv"
 .MCMC_RECRUITMENT_FILE_NAME      <- "iscam_rt_mcmc.csv"
+.MCMC_RECRUITMENT_DEVS_FILE_NAME <- "iscam_rdev_mcmc.csv"
 .MCMC_FISHING_MORT_FILE_NAME     <- "iscam_ft_mcmc.csv"
+.MCMC_VULN_BIOMASS_FILE_NAME     <- "iscam_vbt_mcmc.csv"
 
 # MCMC convergence plot margins
 .MCMC_MARGINS                    <- c(2,4,2,2)
@@ -95,12 +105,12 @@ if(.OS == "Linux" || .OS == "Darwin"){
 .SCENARIO_LIST_LABEL             <- "Scenario List"
 .SENSITIVITY_GROUP_LABEL         <- "Group"
 .PLOT_COLOR_LABEL                <- "Color"
-.PLOT_ORDER_LABEL                <- "Order"
+.PLOT_LINETYPE_LABEL             <- "Line"
 
 # Messages
 .TELL_USER_HOW_TO_START_GUI      <- "Type iscam() to start iscam-gui\n"
 .TELL_USER_ABOUT_GUI_ARGUMENTS   <- paste0("Optional ",.PROJECT_NAME," arguments: ",.MAIN_FUNCTION_CALL,
-                                           "(reloadScenarios = FALSE, silent = FALSE, copyModelExecutables = FALSE)\n\n")
+                                           "(reloadScenarios = FALSE, silent = FALSE)\n\n")
 
 # Model run command line outputs
 .LOG_FILE_NAME                   <- "runoutput.log"  # This is the name of the logfile which holds all command line output.
@@ -151,7 +161,10 @@ if(.OS == "Linux" || .OS == "Darwin"){
                                   #.EXE_FILE_NAME  -- RF don't delete the executable!
                                   )
 # Figure types
-.PNG                             <- FALSE
+.PNG_TYPE                        <- ".png"
+.EPS_TYPE                        <- ".eps"
+.FIGURE_TYPE                     <- .EPS_TYPE # This must match the default radio entry
+.SAVEFIG                         <- FALSE
 .DEPLETION_FIGURE                <- 1
 
 # Plotting
@@ -171,8 +184,8 @@ if(.OS == "Linux" || .OS == "Darwin"){
 .DEFAULT_PLOT_COLOR              <- "1"
 .PLOT_COLOR_TEXT                 <- "# Plotting color"
 .DEFAULT_SENS_GROUP              <- "1"
-.ORDER_TEXT                      <- "# Plotting order"
-.DEFAULT_PLOT_ORDER              <- "1"
+.LINETYPE_TEXT                   <- "# Plotting linetype"
+.DEFAULT_LINETYPE                <- "1"
 
 # Other globals
 .FUNEVALS                        <- 1000

@@ -8,7 +8,7 @@
 
 plotConvergence <- function(scenario   = 1,         # Scenario number
                             plotNum    = 1,         # Plot code number
-                            png        = .PNG,      # TRUE/FALSE for PNG image output
+                            savefig    = .SAVEFIG,  # TRUE/FALSE for plot output
                             fileText   = "Default", # Name of the file if png==TRUE
                             # PlotSpecs: Width, height, and resolution of screen and file
                             ps         = list(pngres = .RESOLUTION,
@@ -17,6 +17,8 @@ plotConvergence <- function(scenario   = 1,         # Scenario number
                                               res    = .RESOLUTION,
                                               w      = .WIDTH,
                                               h      = .HEIGHT),
+                            figtype    = .FIGURE_TYPE, # The filetype of the figure with period, e.g. ".png"
+                            showtitle  = TRUE,         # Show the main title on the plot
                             burnthin   = list(0,1), # List of two elements, burnin and thinning
                             exFactor        = 1.5,
                             showEntirePrior = TRUE,
@@ -25,16 +27,17 @@ plotConvergence <- function(scenario   = 1,         # Scenario number
 
   # Plot a convergence plot for an MCMC model run
   # plotNum must be one of:
-  # 1 Trace plots
-  # 2 Autocorrelation plots
-  # 3 Density plots
-  # 4 Pairs plots with histograms
-  # 5 Priors vs. Posteriors plots
-  # 6 Variance partitions
+  # 1  Trace plots
+  # 2  Autocorrelation plots
+  # 3  Density plots
+  # 4  Pairs plots with histograms
+  # 5  Priors vs. Posteriors plots
+  # 6  Variance partitions
 
   currFuncName <- getCurrFunc()
   scenarioName <- op[[scenario]]$names$scenario
   mcmcOut      <- op[[scenario]]$outputs$mcmc
+  mpdData      <- op[[scenario]]$outputs$mpd #For MLE estimates (Prior/Post plot)
   inputs       <- op[[scenario]]$inputs # For the priors information
   if(is.null(mcmcOut)){
     cat0(.PROJECT_NAME,"->",currFuncName,"The model ",scenarioName," has no mcmc output data associated with it.\n")
@@ -49,41 +52,122 @@ plotConvergence <- function(scenario   = 1,         # Scenario number
   widthScreen  <- ps$w
   heightScreen <- ps$h
 
-  filenameRaw  <- paste0(scenarioName,"_",fileText,".png")
+  filenameRaw  <- paste0(scenarioName,"_",fileText,figtype)
   filename     <- file.path(figDir,filenameRaw)
-  if(png){
+  if(savefig){
     graphics.off()
-    png(filename,res=res,width=width,height=height,units=units)
+    if(figtype == .PNG_TYPE){
+      png(filename,res=res,width=width,height=height,units=units)
+    }
+    if(figtype == .EPS_TYPE){
+      setEPS(horizontal=FALSE, onefile=FALSE, paper="special",width=width,height=height)
+      postscript(filename)
+    }
   }else{
     windows(width=widthScreen,height=heightScreen)
   }
+
   mcmcData <- mcmcOut$params
+
+  # If you are trying to show more than one group or area's parameters,
+  # comment the next line below out.
+  mcmcData <- stripAreasGroups(mcmcData)
+  # We only want to see estimated parameters, so this call strips the static params.
+  mcmcData <- stripStaticParams(scenario, mcmcData)
+
   if(plotNum == 1){
-    plotTraces(mcmcData, burnthin=burnthin)
+    plotTraces(mcmcData, burnthin=burnthin, showtitle = showtitle)
   }
   if(plotNum == 2){
-    plotAutocor(mcmcData, burnthin=burnthin)
+    plotAutocor(mcmcData, burnthin=burnthin, showtitle = showtitle)
   }
   if(plotNum == 3){
-    plotDensity(mcmcData, burnthin=burnthin)
+    plotDensity(mcmcData, burnthin=burnthin, showtitle = showtitle)
   }
   if(plotNum == 4){
-    plotPairs(mcmcData, burnthin=burnthin)
+    plotPairs(mcmcData, burnthin=burnthin, showtitle = showtitle)
   }
   if(plotNum == 5){
-    plotPriorsPosts(mcmcData, inputs = inputs, burnthin=burnthin)
+    plotPriorsPosts(mcmcData, mpdData, inputs = inputs, burnthin=burnthin, showtitle = showtitle)
   }
   if(plotNum == 6){
-    plotVariancePartitions(mcmcData, burnthin=burnthin)
+    plotVariancePartitions(mcmcData, burnthin=burnthin, showtitle = showtitle)
   }
-  if(png){
+  if(savefig){
     cat(.PROJECT_NAME,"->",currFuncName,"Wrote figure to disk: ",filename,"\n\n",sep="")
     dev.off()
   }
   return(TRUE)
 }
 
-plotTraces <- function(mcmcData = NULL, burnthin = c(0,1), axis.lab.freq=200){
+stripAreasGroups <- function(dat){
+  # This is a hack function to remove the area and group prefixes for the mcmc data 'dat'
+  # The reason is that for now we are just working with a single group and area, and
+  # the extra text in the parameter names are confusing, eg. 'ro_gr1' will become just 'ro'
+  # If you make a model with more than one group or area this will need to be revisited.
+  # ALSO this removes 'f' which is assumed to be the objective function value
+  # Note than q1, q2, q3... will stay the same and m1 and m2 will remain if the model was two-sex.
+
+  pnames <- names(dat)
+  # M will only ever be 1 or 2, for each sex
+  pnames <- gsub("m_gs1","m1",pnames)
+  pnames <- gsub("m_gs2","m2",pnames)
+
+  pnames <- gsub("msy1","msy",pnames)
+  pnames <- gsub("fmsy1","fmsy",pnames)
+  pnames <- gsub("SSB1","ssb",pnames)
+  pnames <- gsub("sel_g([0-9]+)","sel\\1",pnames)
+  # Remove underscores
+  names(dat) <- gsub("_+.*","",pnames)
+  # Remove objective function value
+  dat <- dat[,names(dat) != "f"]
+  return(dat)
+}
+
+stripStaticParams <- function(scenario, dat){
+  # Strip out the static (non-estimated) parameters from the mcmc output data
+  # for the given scenario.
+  # We only need to see estimated parameters on the diagnostic plots!
+  # If there are no static parameters, NULL will be returned
+
+  # Check the control file to see which parameters were static
+  inp <- as.data.frame(op[[scenario]]$inputs$control$param)
+  static <- inp[inp$phz <= 0,]
+  snames <- rownames(static)
+
+  # Now remove those from the mcmc data
+  pnames <- names(dat)
+  # remove the log_ stuff from the input parameter names
+  snames <- gsub("log_","",snames)
+  # There will be either one "m" or "m1" and "m2" in pnames.
+  # If "m" is in snames, remove the "m1", and "m2" from pnames
+  if("m" %in% snames){
+    ms <- c("m1","m2")
+    pnames <- pnames[!(pnames %in% ms)]
+  }
+  # The following also removes "m" in a combined sex model
+  dat <- dat[,!(pnames %in% snames)]
+
+  # Remove static selectivity params
+  selParams <- as.data.frame(op[[scenario]]$inputs$control$sel)
+  estphase <- selParams["estphase",]
+  staticSel <- estphase<1
+  selPostNames <- names(dat)[grep("sel",names(dat))]
+  selPostNames <- selPostNames[staticSel]
+  datNames <- names(dat)
+  staticSelInds <- NULL
+  if(length(selPostNames) > 0){
+    # If there are static parameters, remove them.
+    for(staticSel in 1:length(selPostNames)){
+      staticSelInds <- c(staticSelInds, grep(selPostNames[staticSel], datNames))
+    }
+    dat <- dat[,-staticSelInds]
+  }
+  datNames <- names(dat)
+  return(dat)
+}
+
+plotTraces <- function(mcmcData = NULL, burnthin = c(0,1), axis.lab.freq=200, showtitle = TRUE){
   # Traceplots for an mcmc matrix, mcmcData
   # axis.lab.freq is the frequency of x-axis labelling
 
@@ -101,16 +185,20 @@ plotTraces <- function(mcmcData = NULL, burnthin = c(0,1), axis.lab.freq=200){
     cat0(.PROJECT_NAME,"->",currFuncName,"Burnin value exceeds mcmc chain length.\n")
     return(NULL)
   }
-  numParams <- ncol(mcmcData)
-  # The next line is a simple algorithm, just generate the smallest square grid
-  # that will hold all of the parameter trace plots.
-  nrows <- ncols <- ceiling(sqrt(numParams))
-	par(mfrow=c(nrows, ncols), las=1)
+  # np is number of parameters
+  np <- ncol(mcmcData)
+  nside <- getRowsCols(np)
+  par(mfrow = nside, oma = c(2,3,1,1), mai = c(0.2,0.4,0.3,0.2))
+
   mcmcData <- window(as.matrix(mcmcData), start=burnin, thin=thinning)
-  for(param in 1:numParams){
+  for(param in 1:np){
     par(mar=.MCMC_MARGINS)
     mcmcTrace <- as.matrix(mcmcData[,param])
-    plot(mcmcTrace, main=colnames(mcmcData)[param], type="l",ylab="",xlab="",axes=F)
+#    if(param==5){
+#      plot(mcmcTrace, main=colnames(mcmcData)[param], type="l",ylab="",xlab="",ylim=c(0,1), axes=F)
+#    }else{
+      plot(mcmcTrace, main=colnames(mcmcData)[param], type="l",ylab="",xlab="",axes=F)
+#    }
     box()
     at <- labels <- seq(0,nrow(mcmcData), axis.lab.freq)
     axis(1, at=at, labels=labels)
@@ -120,7 +208,8 @@ plotTraces <- function(mcmcData = NULL, burnthin = c(0,1), axis.lab.freq=200){
 
 plotAutocor <- function(mcmcData = NULL,
                         burnthin = c(0,1),
-                        lag = c(0, 1, 5, 10, 15, 20, 30, 40, 50)){
+                        lag = c(0, 1, 5, 10, 15, 20, 30, 40, 50),
+                        showtitle = TRUE){
   # Plot autocorrelations for all mcmc parameters
   oldPar <- par(no.readonly=TRUE)
   on.exit(par(oldPar))
@@ -136,20 +225,18 @@ plotAutocor <- function(mcmcData = NULL,
     cat0(.PROJECT_NAME,"->",currFuncName,"Burnin value exceeds mcmc chain length.\n")
     return(NULL)
   }
-  numParams <- ncol(mcmcData)
-  # The next line is a simple algorithm, just generate the smallest square grid
-  # that will hold all of the parameter trace plots.
-  nrows <- ncols <- ceiling(sqrt(numParams))
-	par(mfrow=c(nrows, ncols), las=1)
+  np <- ncol(mcmcData)
+  nside <- getRowsCols(np)
+  par(mfrow = nside, oma = c(2,3,1,1), mai = c(0.2,0.4,0.3,0.2))
 
-  for(param in 1:numParams){
+  for(param in 1:np){
     par(mar=.MCMC_MARGINS)
     mcmcAutocor <- window(mcmc(as.ts(mcmcData[,param])), start = burnin, thin = thinning)
     autocorr.plot(mcmcAutocor, lag.max = 100, main = colnames(mcmcData)[param], auto.layout = FALSE)
   }
 }
 
-plotDensity <- function(mcmcData = NULL, burnthin = c(0,1), color = 1, opacity = 30){
+plotDensity <- function(mcmcData = NULL, burnthin = c(0,1), color = 1, opacity = 30, showtitle = TRUE){
   # Plot densities for the mcmc parameters in the matrix mcmcData
 	oldPar	<- par(no.readonly=T)
   on.exit(par(oldPar))
@@ -165,13 +252,11 @@ plotDensity <- function(mcmcData = NULL, burnthin = c(0,1), color = 1, opacity =
     cat0(.PROJECT_NAME,"->",currFuncName,"Burnin value exceeds mcmc chain length.\n")
     return(NULL)
   }
-  numParams <- ncol(mcmcData)
-  # The next line is a simple algorithm, just generate the smallest square grid
-  # that will hold all of the parameter trace plots.
-  nrows <- ncols <- ceiling(sqrt(numParams))
-	par(mfrow=c(nrows, ncols), las=1)
+  np <- ncol(mcmcData)
+  nside <- getRowsCols(np)
+  par(mfrow = nside, oma = c(2,3,1,1), mai = c(0.2,0.4,0.3,0.2))
 
-  for(param in 1:numParams){
+  for(param in 1:np){
     par(mar=.MCMC_MARGINS)
     dat <- window(mcmc(as.ts(mcmcData[,param])), start = burnin, thin = thinning)
     dens <- density(dat)
@@ -183,7 +268,7 @@ plotDensity <- function(mcmcData = NULL, burnthin = c(0,1), color = 1, opacity =
   }
 }
 
-plotPairs <- function(mcmcData = NULL, burnthin = c(0,1)){
+plotPairs <- function(mcmcData = NULL, burnthin = c(0,1), showtitle = TRUE){
   # Pairs plots for an mcmc matrix, mcmcData
 
   oldPar <- par(no.readonly=TRUE)
@@ -207,16 +292,22 @@ plotPairs <- function(mcmcData = NULL, burnthin = c(0,1)){
     h      <- hist(x, plot = FALSE)
     breaks <- h$breaks; nB <- length(breaks)
     y      <- h$counts; y <- y/max(y)
-    rect(breaks[-nB], 0, breaks[-1], y, col="cyan", ...)
+    rect(breaks[-nB], 0, breaks[-1], y, col="wheat", cex=0.75, ...)
   }
+
+  # Remove the reference point posteriors for this plot
+  datNames <- names(mcmcData)
+  refptInd <- c(grep("bo",datNames),grep("bmsy",datNames),grep("fmsy",datNames),grep("msy",datNames),grep("ssb",datNames))
+  mcmcData <- mcmcData[,-refptInd]
 
   numParams <- ncol(mcmcData)
   mcmcData <- window(as.matrix(mcmcData), start=burnin, thin=thinning)
   pairs(mcmcData, pch=".", upper.panel = panel.smooth, diag.panel = panel.hist, lower.panel = panel.smooth)
 }
 
-plotPriorsPosts <- function(mcmcData, inputs = NULL, burnthin = c(0,1), color = 1, opacity = 30){
+plotPriorsPosts <- function(mcmcData, mpdData, inputs = NULL, burnthin = c(0,1), color = 1, opacity = 30, showtitle = TRUE){
   # Produce a grid of the parameters' posteriors with their priors overlaid.
+  # mpdData is used to get the MLE estimates for each parameter
 	oldPar	<- par(no.readonly=T)
   on.exit(par(oldPar))
 
@@ -249,58 +340,90 @@ plotPriorsPosts <- function(mcmcData, inputs = NULL, burnthin = c(0,1), color = 
   # 6. p1 (defined by 5 above)
   # 7. p2 (defined by 5 above)
   fNames <- c(dunif,dnorm,dlnorm,dbeta,dgamma)
-  fNamesR <- c(runif,rnorm,rlnorm,rbeta,rgamma)
 
   numParams <- ncol(mcmcData)
-  numQParams <- ncol(inputs$control$survq)
   qParams <- inputs$control$survq
-  outputParamNames <- names(mcmcData)
+  numQParams <- ncol(qParams)
+  priorSpecs <- as.data.frame(inputs$control$param)
 
-  # Convert the priors in logspace into standard space
-  paramSpecs <- convertLogParams(inputs$control$param)
-  # Add in the q parameters
+  # Remove fixed parameters
+  priorSpecs <- priorSpecs[priorSpecs$phz>0,]
+  # Remove upper and lower bound, and phase information, but keep initial value
+  priorSpecs <- priorSpecs[,-c(2:4)]
+
+  # Add in the q parameters to the prior specs table
   for(q in 1:numQParams){
     # Add a row for each q to the paramSpecs matrix
-    paramSpecs <- rbind(paramSpecs, c(NA, NA, NA, NA, qParams[1,q], exp(qParams[2,q]), exp(qParams[3,q])))
-    rownames(paramSpecs)[nrow(paramSpecs)] <- paste0("q",q)
+    priorSpecs <- rbind(priorSpecs, c(qParams[2,q], qParams[1,q], qParams[2,q], qParams[3,q]))
+    rownames(priorSpecs)[nrow(priorSpecs)] <- paste0("log_q",q)
   }
-  # First, figure out how many output parameters have associated priors and make the grid that size
-  priorParamNames <- rownames(paramSpecs)
-  # Add in the q parameters
-  priorParamNames <- c(priorParamNames, paste0("q",1:numQParams))
-  numWithPriors <- 0
-  for(priorParam in 1:length(priorParamNames)){
-    # For each prior that exists, match up the output paramater estimates
-    pattern <- paste0("^",priorParamNames[priorParam],"_[[:alnum:]]+$")
-    priorLoc <- grep(pattern, outputParamNames)
-    if(length(priorLoc) == 0){
-      pattern <- paste0("^",priorParamNames[priorParam],"$")
-      priorLoc <- grep(pattern, outputParamNames)
-    }
-    if(length(priorLoc) > 0){
-      numWithPriors <- numWithPriors + length(priorLoc)
-    }
-  }
-  # Make a square grid of plots
-  nrows <- ncols <- ceiling(sqrt(numWithPriors))
-	par(mfrow=c(nrows, ncols), las=1)
 
-  # Plot posteriors, then match up the input prior and plot
-  for(param in 1:numParams){
-    # Plot posterior density first
-    par(mar=.MCMC_MARGINS)
-    # Get posterior data
-    dat <- window(mcmc(as.ts(mcmcData[,param])), start = burnin, thin = thinning)
-    # Get rid of the trailing _ and group/area/sex numbers
-    name <- sub("_.*","",outputParamNames[param])
-    paramNames <- rownames(paramSpecs)
-    # Match the name of the output posterior with its input parameter specifications
-    row <- grep(name, paramNames)
-    if(length(row) > 0){
-      specs <- paramSpecs[row,]
-      priorfn <- fNames[[specs[5]+1]] # +1 because the control prior starts at zero
-      priorfnr <- fNamesR[[specs[5]+1]] # +1 because the control prior starts at zero
-      xx <- list(p = dat, p1 = specs[6], p2 = specs[7], fn = priorfn, fnr = priorfnr, nm = outputParamNames[param])
+  priorNames <- rownames(priorSpecs)
+  postNames <- names(mcmcData)
+
+  if(length(grep("^m[12]$",postNames)) == 2){
+    # Remove the single 'm' and add the two m's, log_m1 and log_m2 to the prior paramSpecs table
+    # because the posterior output has two m's
+    mSpecInd <- grep("m",priorNames)
+    mSpec <- priorSpecs[mSpecInd,]
+    priorSpecs <- priorSpecs[-mSpecInd,]
+    # Add each m1 and m2 in
+    mSpec1 <- mSpec2 <- mSpec
+    rownames(mSpec1) <- "log_m1"
+    rownames(mSpec2) <- "log_m2"
+    priorSpecs <- rbind(mSpec1,mSpec2,priorSpecs)
+  }else{
+    # Only one m, so make it log_m
+    mSpecInd <- grep("m",priorNames)
+    mSpec <- priorSpecs[mSpecInd,]
+    priorSpecs <- priorSpecs[-mSpecInd,]
+    # Add each m1 and m2 in
+    rownames(mSpec) <- "log_m"
+    priorSpecs <- rbind(mSpec,priorSpecs)
+  }
+
+  priorNames <- rownames(priorSpecs)
+  numWithPriors <- length(priorNames)
+  nside <- getRowsCols(numWithPriors)
+  par(mfrow = nside, oma = c(2,3,1,1), mai = c(0.2,0.4,0.3,0.2))
+
+
+  for(postInd in 1:ncol(mcmcData)){
+    # Find the parameter name from mcmcData in the priorSpecs table
+    # and plot if it is in the paramSpecs table
+    # Make sure that the name matches exactly by adding anchors ^ and $ to the pattern
+    # and log_ is optional
+    postName <- names(mcmcData)[postInd]
+    priorPattern <- paste0("^[log_]*",postName,"$")
+    priorInd <- grep(priorPattern, priorNames)
+    if(length(priorInd) > 0){
+      # The posterior name is in the list of priors..
+      dat <- mcmcData[,postInd]
+      if(postName != "h"){  # HACK!!! iScam should output ist results in the same space as input parameters
+        dat <- log(dat)
+      }
+      dat <- window(mcmc(as.ts(dat), start = burnin, thin = thinning))
+
+      specs <- unlist(priorSpecs[priorInd,])
+      priorfn <- fNames[[specs[2]+1]] # +1 because the control prior starts at zero
+
+      # Get matching MLE estimate for this parameter from mpdData
+      pName <- priorNames[priorInd]
+      qpat <- "log_q([1-9])+$"
+      if(pName == "log_m1"){
+        mle <- mpdData$m[1]
+      }else if(pName == "log_m2"){
+        mle <- mpdData$m[2]
+      }else if(pName == "h"){
+        mle <- mpdData$steepness
+      }else if(length(grep(qpat,pName)) > 0){
+        num <- as.numeric(sub(qpat, "\\1", pName))
+        mle <- mpdData$q[num]
+      }else{
+        mle <- mpdData[postName]
+      }
+      xx <- list(p = dat, p1 = specs[3], p2 = specs[4], fn = priorfn, nm = priorNames[priorInd], mle=mle)
+      par(mar=.MCMC_MARGINS)
       plot.marg(xx, breaks = "sturges", col = "wheat")
     }
   }
@@ -335,6 +458,7 @@ convertLogParams <- function(paramSpecs = NULL){
     logParamSpecs[param, 2] <- exp(logParamSpecs[param,2])
     logParamSpecs[param, 3] <- exp(logParamSpecs[param,3])
     logParamSpecs[param, 6] <- exp(logParamSpecs[param,6])
+    # The second parameter in the prior is not logged
     logParamSpecs[param, 7] <- exp(logParamSpecs[param,7])
   }
   rownames(logParamSpecs) <- logInpNames
@@ -347,19 +471,21 @@ convertLogParams <- function(paramSpecs = NULL){
 plot.marg <- function(xx, breaks = "sturges", exFactor = 1.0, ...){
   # xx is a list(p=samples, p1=prior param 1, p2=prior param 2, fn=prior distribution)
   #  and ignore posterior distribution limits
-
   posteriorNoPlot <- hist(xx$p, breaks = breaks, plot=FALSE)
-  xvals <- seq(min(posteriorNoPlot$breaks)/exFactor, max(posteriorNoPlot$breaks)*exFactor, length=250)
-
+  xvals <- seq(min(posteriorNoPlot$breaks)/exFactor, max(posteriorNoPlot$breaks)/exFactor, length=1000)
   pd <- xx$fn(xvals, xx$p1, xx$p2)
   z <- cbind(xvals, pd)
+
   xlim <- c(min(xvals), max(xvals))
   ss <- hist(xx$p, prob=TRUE, breaks = breaks, main = xx$nm, xlab="", cex.axis = 1.2, xlim = xlim, ylab = "", ...)
-  lines(xvals, pd, col="green", lwd=2)
-  #abline(v = xx$mle, lwd=2, lty=2, col=2)
+  par(new=T)
+  func <- function(x){xx$fn(x,xx$p1,xx$p2)}
+  curve(func, -10, 10, xlab="", ylab="", col="green", lwd=2, axes=FALSE)
+  #curve(func, xlim[1], xlim[2], xlab="", ylab="", col="green", lwd=2, axes=FALSE)
+  abline(v = xx$mle, lwd=2, lty=2, col=2)
 }
 
-plotVariancePartitions <- function(mcmcData, burnthin = c(0,1)){
+plotVariancePartitions <- function(mcmcData, burnthin = c(0,1), showtitle = TRUE){
   # Produce a grid of pairs plots for the variance parameters' posteriors
   # Assumes that there are an equal number of each rho and vartheta
   #  parameters, i.e. each group must have both rho and vartheta and
