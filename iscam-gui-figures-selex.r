@@ -28,15 +28,23 @@ plotSelex <- function(scenario   = 1,            # Scenario number
                       figtype    = .FIGURE_TYPE, # The filetype of the figure with period, e.g. ".png"
                       showtitle  = TRUE,         # Show the main title on the plot
                       units      = .UNITS,       # Units to use in plotting
-                      silent     = .SILENT
+                      silent     = .SILENT,
+                      colors     = NULL,         # Allow a color vector to be input (for use with latex). If NULL, colors will come from gui.
+                      linetypes  = NULL,         # Allow a linetypes vector to be input (for use with latex). If NULL, linetypes will come from gui.
+                      names      = NULL,         # Allow a names vector to be input (for use with latex). If NULL, names will come from gui.
+                      add        = FALSE,        # If TRUE, plot will be added to current device
+                      indletter  = NULL,         # A letter to plot on the panel. If NULL, no letter will be printed.
+                      showmat    = FALSE         # Used in the plot with both selectivities and maturity ogives only (#3)
                       ){
 
   # plotNum must be one of:
-  # 1  Logistic selectivity - age or length based will be detected automatically
+  # 1  Logistic selectivity one gear  - age or length based will be detected automatically
+  # 2  Logistic selectivity all gears - age or length based will be detected automatically
+  # 3  Logistic selectivity all gears with maturity - age only
 
   currFuncName <- getCurrFunc()
 
-  if(plotNum != 1){
+  if(plotNum < 1 || plotNum > 3){
     return(FALSE)
   }
   scenarioName <- op[[scenario]]$names$scenario
@@ -61,10 +69,16 @@ plotSelex <- function(scenario   = 1,            # Scenario number
   }
 
   out    <- validModels[[1]]
-  colors <- validModels[[2]]
-  names  <- validModels[[3]]
+  if(is.null(colors)){
+    colors <- validModels[[2]]
+  }
+  if(is.null(names)){
+    names  <- validModels[[3]]
+  }
   inputs <- validModels[[4]]
-  linetypes <- validModels[[5]]
+  if(is.null(linetypes)){
+    linetypes <- validModels[[5]]
+  }
   parout <- validModels[[6]]
   controlinputs <- validModels[[7]]
 
@@ -101,15 +115,21 @@ plotSelex <- function(scenario   = 1,            # Scenario number
     if(figtype == .EPS_TYPE){
       postscript(filename, horizontal=FALSE, paper="special",width=width,height=height)
     }
-  }else{
+  }else if(!add){
     windows(width=widthScreen,height=heightScreen)
   }
 
   if(plotNum==1){
     plotLogisticSel(scenario, out, colors, names, lty = linetypes, inputs = inputs,
-                    controlinputs = controlinputs, index = index, verbose = !silent, leg = leg, showtitle = showtitle)
+                    controlinputs = controlinputs, index = index, verbose = !silent, leg = leg, showtitle = showtitle, add=add)
   }
-  if(plotNum>=2)  cat("No Plot Yet -- Coming Soon!!\n")
+  if(plotNum==2){
+    plotLogisticSelAllGears(scenario, out, inputs=inputs, controlinputs=controlinputs, verbose = !silent, leg = leg, showtitle = showtitle, add=add, showmat=showmat)
+  }
+
+  if(!is.null(indletter)){
+    .gletter(indletter)
+  }
 
   if(savefig){
     cat(.PROJECT_NAME,"->",currFuncName,"Wrote figure to disk: ",filename,"\n\n",sep="")
@@ -118,7 +138,74 @@ plotSelex <- function(scenario   = 1,            # Scenario number
   return(TRUE)
 }
 
-plotLogisticSel	<-	function(scenario, out, colors, names, lty, inputs, controlinputs, index, verbose, leg, showtitle = TRUE){
+plotLogisticSelAllGears	<-	function(scenario, out, inputs, controlinputs, verbose, leg, showtitle = TRUE, add=FALSE, showmat=FALSE){
+  # Currently only implemented for seltypes 1,6 and 11 (estimated logistic age-based, fixed logistic age-based, or estimated logistic length-based)
+  # Single sex only, no time blocks
+  # Parses the control inputs to see which gears have age comps and therefore selectivity estimates
+  # Assumes 'out' is list of length 1, this is not a sensitivity plot but a single-scenario plot with multiple gears.
+  # If showmat is TRUE then maturity ogive will be included in plot
+
+  currFuncName <- getCurrFunc()
+  if(!add){
+    oldPar <- par(no.readonly=TRUE)
+    on.exit(par(oldPar))
+  }
+  # Get gear names
+  gearnames <- inputs[[1]]$gearNames
+  # Get phase information for the gears, negatives are fixed, positives are estimated
+  estphase <- controlinputs[[1]]$sel[6,]
+  # Selectivity parameter values from the model. Even if fixed, they appear in the output.
+  selex <- out[[1]]$mpd$sel
+  # Change the names of the fixed selectivities in the legend
+  gearnames[estphase<0] <- paste0(gearnames[estphase<0]," (Fixed)")
+  age <- out[[1]]$mpd$age
+
+  # Get selectivity outputs
+  logselData   <- out[[1]]$mpd$log_sel
+  # Make matrix for plotting
+  mat <- NULL
+  for(gearnum in 1:nrow(selex)){
+    # For each gear, extract the log sel and years
+    logseldata   <- logselData[which(logselData[,1] == gearnum),]
+    #nb <- controlinputs[[1]]$sel["nselblocks",][gearnum]
+    yrs <- logseldata[,3]
+    selData <- exp(logseldata[,4:ncol(logseldata)])
+    selData <- selData[nrow(selData),] # end-year selectivity for the only block
+    mat <- cbind(mat, selData)
+  }
+
+  titletext <- ""
+  if(showtitle){
+    titletext <- "Selectivities for all gears"
+  }
+  col <- seq(1,ncol(mat))
+  lty <- rep(1,ncol(mat))
+  lwd <- rep(2,ncol(mat))
+  matplot(age, mat, type = "l", lwd = lwd, col = col, lty = lty, las = 1,
+          main = titletext, xlim = c(1,max(age)), ylim = c(0,1.1), ylab="Selectivity", xlab="Age")
+  if(showmat){
+    # Add maturity ogive to selectivity plot
+    # Plots female only - number 2 in next line signifies female
+    data <- bio$ma
+    sex <- 2
+    a50 <- data[[sex]][[2]][1,]
+    sigma_a50 <- data[[sex]][[2]][2,]
+    if(is.null(a50) || is.null(sigma_a50)){
+      cat0(.PROJECT_NAME,"->",getCurrFunc(),"Error - element 'ma' of object 'bio' does not exist. Run the maturity/age model from the Biotool tab.")
+      return(NULL)
+    }
+    gearnames <- c(gearnames, "Female maturity")
+    col <- c(col, ncol(mat)+1)
+    lty <- c(lty, 2)
+    lwd <- c(lwd, 3)
+    curve(1/(1+exp(-(x-a50)/sigma_a50)), col=ncol(mat)+1, lty=2, lwd=3, add=TRUE)
+  }
+  if(!is.null(leg)){
+    legend(leg, legend=gearnames, col=col, lty=lty, lwd=lwd)
+  }
+}
+
+plotLogisticSel	<-	function(scenario, out, colors, names, lty, inputs, controlinputs, index, verbose, leg, showtitle = TRUE, add=FALSE){
   # Currently only implemented for seltypes 1,6 and 11 (estimated logistic age-based, fixed logistic age-based, or estimated logistic length-based)
   # Both sexes will be plotted with linetype of the females = linetype for males + 1 The colors will be the same.
   # Notes:
@@ -131,8 +218,11 @@ plotLogisticSel	<-	function(scenario, out, colors, names, lty, inputs, controlin
   #   but incrementing line tyles (lty) and labelled on the legend with the range of years the block covers.
 
   currFuncName <- getCurrFunc()
-  oldPar <- par(no.readonly=TRUE)
-  on.exit(par(oldPar))
+  if(!add){
+    oldPar <- par(no.readonly=TRUE)
+    on.exit(par(oldPar))
+  }
+
   ## if(selType != 1 && selType != 6 && selType != 11){
   ##   cat0(.PROJECT_NAME,"->",currFuncName,"The selectivity plotting function can only plot logistic selectivity for age or length (types 1,6,11 only).")
   ##   return(NULL)
@@ -223,7 +313,6 @@ plotLogisticSel	<-	function(scenario, out, colors, names, lty, inputs, controlin
         }
         selData <- exp(logselData[,4:ncol(logselData)])
         selData <- selData[nrow(selData),] # end-year selectivity for the only block
-        #selData <- as.matrix(selData)
         mat <- cbind(mat, selData)
       }
       gearTitle <- agegearnames[gearnum]
@@ -239,7 +328,7 @@ plotLogisticSel	<-	function(scenario, out, colors, names, lty, inputs, controlin
   colors[sapply(colors, is.na)] <- NULL
   names[sapply(names, is.na)] <- NULL
   matplot(age, mat, type = "l", lwd = 2, lty = unlist(lty), col = unlist(colors), las = 1,
-          main = titletext, xlim = c(1,max(age)), ylim = c(0,1.1), ylab="", xlab="Age")
+          main = titletext, xlim = c(1,max(age)), ylim = c(0,1.1), ylab="Selectivity", xlab="Age")
   if(!is.null(leg)){
     legend(leg, legend=names, col=unlist(colors), lty=unlist(lty), lwd=2)
   }

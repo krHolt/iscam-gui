@@ -29,13 +29,25 @@ plotTS <- function(scenario   = 1,         # Scenario number
                    figtype    = .FIGURE_TYPE, # The filetype of the figure with period, e.g. ".png"
                    showtitle  = TRUE,         # Show the main title on the plot
                    recrOffset = 0.1,          # Recruitment bar offset used if multiple==TRUE
+                   recrShowFinalYear = TRUE,  # Show the final year in recruitment plots
                    btarg      = 0.4,          # Biomass target line for depletion plots
                    blim       = 0.25,         # Biomass limit line for depletion plots
                    units      = .UNITS,       # Units to use in plotting
                    silent     = .SILENT,
                    showSbio   = FALSE,        # Show Spawning biomass on Vulnerable biomass plot
                    plotU      = FALSE,        # Plot U instead of F for the fishing mortality plot
-                   indfixaxis = FALSE){       # Fix the index x-axis so that all indices or plotted on the same year scale
+                   indfixaxis = FALSE,        # Fix the index x-axis so that all indices or plotted on the same year scale
+                   indletter  = NULL,         # A letter to plot on the panel. If NULL, no letter will be printed.
+                   showumsy   = FALSE,        # Plot Umsy instead of Fmsy for reference point plot
+                   colors     = NULL,         # Allow a color vector to be input (for use with latex). If NULL, colors will come from gui.
+                   linetypes  = NULL,         # Allow a linetypes vector to be input (for use with latex). If NULL, linetypes will come from gui.
+                   names      = NULL,         # Allow a names vector to be input (for use with latex). If NULL, names will come from gui.
+                   shortnames = NULL,         # Short names, mainly for use with the reference points plot, so that names will be visible
+                   showB0Ref  = FALSE,        # Show the 0.2 and 0.4 B0 lines on the spawning biomass mcmc plot
+                   showBMSYRef= FALSE,        # Show the 0.4 and 0.8 BMSY lines on the spawning biomass mcmc plot
+                   add        = FALSE,        # If TRUE, plot will be added to current device
+                   opacity    = 90            # Opaqueness (opposite of transparency) with which to draw envelopes
+                   ){
 
   # If multiple==TRUE, whatever is in the sensitivity list (sens) for the currently
   #  chosen sensitivity number in the GUI will be plotted.
@@ -97,10 +109,16 @@ plotTS <- function(scenario   = 1,         # Scenario number
   }
 
   out    <- validModels[[1]]
-  colors <- validModels[[2]]
-  names  <- validModels[[3]]
+  if(is.null(colors)){
+    colors <- validModels[[2]]
+  }
+  if(is.null(names)){
+    names  <- validModels[[3]]
+  }
   inputs <- validModels[[4]]
-  linetypes <- validModels[[5]]
+  if(is.null(linetypes)){
+    linetypes <- validModels[[5]]
+  }
   parout <- validModels[[6]]
 
   if(is.null(validModels)){
@@ -143,73 +161,72 @@ plotTS <- function(scenario   = 1,         # Scenario number
     if(figtype == .EPS_TYPE){
       postscript(filename, horizontal=FALSE, paper="special",width=width,height=height)
     }
-  }else{
+  }else if(!add){
     windows(width=widthScreen,height=heightScreen)
   }
 
   if(plotNum == 1){
     if(plotMCMC){
-      plotBiomassMCMC(out, colors, names, burnthin = burnthin, ci, verbose = !silent, leg = leg, showtitle = showtitle)
+      plotBiomassMCMC(out, colors, names, burnthin = burnthin, ci, verbose = !silent, leg = leg, showtitle = showtitle, showB0Ref = showB0Ref, showBMSYRef = showBMSYRef, opacity=opacity, add=add)
     }else{
-      plotBiomassMPD(out, colors, names, lty = linetypes, verbose = !silent, leg = leg, showtitle = showtitle)
+      if(showBMSYRef){
+        cat0(.PROJECT_NAME,"->",currFuncName,"BMSY reference line not available in MPD mode.")
+      }
+      plotBiomassMPD(out, colors, names, lty = linetypes, verbose = !silent, leg = leg, showtitle = showtitle, showB0Ref = showB0Ref, opacity=opacity)
     }
   }
   if(plotNum == 3){
     if(plotMCMC){
-      plotDepletionMCMC(out, colors, names, burnthin = burnthin, ci, verbose = !silent, leg = leg, showtitle = showtitle)
+      plotDepletionMCMC(out, colors, names, burnthin = burnthin, ci, verbose = !silent, leg = leg, showtitle = showtitle, opacity=opacity, add=add)
     }else{
-      plotDepletionMPD(out, colors, names, lty = linetypes, verbose = !silent, leg = leg, showtitle = showtitle)
+      plotDepletionMPD(out, colors, names, lty = linetypes, verbose = !silent, leg = leg, showtitle = showtitle, opacity=opacity, add=add)
     }
   }
   if(plotNum == 5){
     if(plotMCMC){
-      plotRecruitmentMCMC(out, colors, names, ci, burnthin = burnthin, offset=recrOffset, verbose = !silent, leg = leg, showtitle = showtitle)
+      plotRecruitmentMCMC(out, colors, names, ci, burnthin = burnthin, offset=recrOffset, verbose = !silent, leg = leg, showtitle = showtitle, add=add, recrShowFinalYear=recrShowFinalYear)
     }else{
-      plotRecruitmentMPD(out, colors, names, lty = linetypes, verbose = !silent, leg = leg, showtitle = showtitle)
+      plotRecruitmentMPD(out, colors, names, lty = linetypes, verbose = !silent, leg = leg, showtitle = showtitle, add=add, recrShowFinalYear=recrShowFinalYear)
     }
   }
   if(plotNum == 7){
     if(plotMCMC){
-      cat0(.PROJECT_NAME,"->",currFuncName,"MCMC plots for Indices not implemented.")
-    }else{
-      plotIndexMPD(scenario, out, inputs, index, colors, names, linetypes, verbose = !silent, leg = leg, showtitle = showtitle, indfixaxis=indfixaxis)
+      cat0(.PROJECT_NAME,"->",currFuncName,"MCMC plots for Indices not implemented. Plotting MPD.")
     }
-  }
-  if(plotNum == 8){
-    if(plotMCMC){
-      #plotSPRMCMC(out, colors, names, inputs, ci, index = index, verbose = !silent, leg = leg)
-    }else{
-      #plotSPRMPD(out, colors, names, inputs, index = index, verbose = !silent, leg = leg)
-    }
+    plotIndexMPD(scenario, out, inputs, index, colors, names, linetypes, verbose = !silent, leg = leg, showtitle = showtitle, indfixaxis=indfixaxis, add=add)
   }
   if(plotNum == 9){
     if(plotMCMC){
-      plotFMCMC(out, colors, names, ci, burnthin = burnthin, verbose = !silent, leg = leg, showtitle = showtitle, plotU=plotU)
+      plotFMCMC(out, colors, names, ci, burnthin = burnthin, verbose = !silent, leg = leg, showtitle = showtitle, plotU=plotU, opacity=opacity, add=add)
     }else{
-      plotFMPD(out, colors, names, verbose = !silent, leg = leg, showtitle = showtitle, plotU=plotU)
+      plotFMPD(out, colors, names, verbose = !silent, leg = leg, showtitle = showtitle, plotU=plotU, opacity=opacity, add=add)
     }
   }
   if(plotNum == 10){
     if(plotMCMC){
-      plotReferencePointsMCMC(out, colors, names, ci, burnthin = burnthin, verbose = !silent, showtitle = showtitle)
+      plotReferencePointsMCMC(out, colors, names, ci, burnthin = burnthin, verbose = !silent, showtitle = showtitle, shortnames=shortnames, showumsy=showumsy, add=add)
     }else{
       cat0(.PROJECT_NAME,"->",currFuncName,"Cannot make MPD plots for reference points, run MCMC first.")
     }
   }
   if(plotNum == 11){
     if(plotMCMC){
-      plotRecruitmentDevsMCMC(out, colors, names, ci, burnthin = burnthin, offset=recrOffset, verbose = !silent, leg = leg, showtitle = showtitle)
+      plotRecruitmentDevsMCMC(out, colors, names, ci, burnthin = burnthin, offset=recrOffset, verbose = !silent, leg = leg, showtitle = showtitle, add=add)
     }else{
-      plotRecruitmentDevsMPD(out, parout, colors, names, lty = linetypes, verbose = !silent, leg = leg, showtitle = showtitle)
+      plotRecruitmentDevsMPD(out, parout, colors, names, lty = linetypes, verbose = !silent, leg = leg, showtitle = showtitle, add=add)
     }
   }
   if(plotNum == 12){
     # Vulnerable biomass
     if(plotMCMC){
-      plotVBiomassMCMC(out, colors, names, burnthin = burnthin, ci, verbose = !silent, leg = leg, showtitle = showtitle, showSbio = showSbio)
+      plotVBiomassMCMC(out, colors, names, burnthin = burnthin, ci, verbose = !silent, leg = leg, showtitle = showtitle, showSbio = showSbio, opacity=opacity, add=add)
     }else{
-      plotVBiomassMPD(out, colors, names, lty = linetypes, verbose = !silent, leg = leg, showtitle = showtitle, showSbio = showSbio)
+      plotVBiomassMPD(out, colors, names, lty = linetypes, verbose = !silent, leg = leg, showtitle = showtitle, showSbio = showSbio, opacity=opacity, add=add)
     }
+  }
+
+  if(!is.null(indletter)){
+    .gletter(indletter)
   }
 
   if(savefig){
@@ -225,7 +242,10 @@ plotBiomassMPD <- function(out       = NULL,
                            lty       = NULL,
                            verbose   = FALSE,
                            showtitle = TRUE,
-                           leg = "topright"){
+                           showB0Ref = TRUE,
+                           leg       = "topright",
+                           add       = FALSE,
+                           opacity   = 90){
   # Biomass plot for an MPD
   # out is a list of the mpd outputs to show on the plot
   # col is a list of the colors to use in the plot
@@ -252,8 +272,14 @@ plotBiomassMPD <- function(out       = NULL,
     cat0(.PROJECT_NAME,"->",currFuncName,"You must supply a linetypes vector (lty).")
     return(NULL)
   }
-  oldPar <- par(no.readonly=TRUE)
-  on.exit(par(oldPar))
+  if(!add){
+    oldPar <- par(no.readonly=TRUE)
+    on.exit(par(oldPar))
+  }
+
+  # This is required on biomass plots to make the y-axis label visible, only 2nd item is +1 from default
+  par(mar=c(5.1,5.1,4.1,2.1))
+
   yUpper <- max(out[[1]]$mpd$sbt, out[[1]]$mpd$sbo)
    if(out[[1]]$mpd$sbo > 2*max(out[[1]]$mpd$sbt)){
     # When sbo is very large, the trends in sbt are masked - don't plot sbt if more than twice the max value of sbt
@@ -266,7 +292,7 @@ plotBiomassMPD <- function(out       = NULL,
      yUpper <- max(yUpper, out[[model]]$mpd$sbt, out[[model]]$mpd$sbo)
    }
   }
-  par(mar=c(3,6,3,3))
+  #par(mar=c(3,6,3,3))
   title <- ""
   if(showtitle){
     title <- "Spawning Biomass"
@@ -279,24 +305,37 @@ plotBiomassMPD <- function(out       = NULL,
       points(out[[line]]$mpd$yr[1], out[[line]]$mpd$sbo, col=colors[[line]], pch=20)
     }
   }
+  # Add 0.2B0, and 0.4B0 lines for the reference case [[1]] to plot
+  if(showB0Ref){
+    abline(h=0.2*out[[1]]$mpd$sbo, col="red", lty=2)
+    mtext("0.2B0",2,at=0.2*out[[1]]$mpd$sbo,col="red",las=1)
+    abline(h=0.4*out[[1]]$mpd$sbo, col="green", lty=2)
+    mtext("0.4B0",2,at=0.4*out[[1]]$mpd$sbo,col="green",las=1)
+  }
   if(!is.null(leg)){
     legend(leg, legend=names, col=unlist(colors), lty=unlist(lty), lwd=2)
   }
 }
 
-plotBiomassMCMC <- function(out       = NULL,
-                            colors    = NULL,
-                            names     = NULL,
-                            ci        = NULL,
-                            burnthin  = list(0,1),
-                            verbose   = FALSE,
-                            showtitle = TRUE,
-                            leg = "topright"){
+plotBiomassMCMC <- function(out         = NULL,
+                            colors      = NULL,
+                            names       = NULL,
+                            ci          = NULL,
+                            burnthin    = list(0,1),
+                            offset      = 0.1,
+                            verbose     = FALSE,
+                            showtitle   = TRUE,
+                            showB0Ref   = FALSE,  # Show the 0.2 and 0.4 B0 lines on the plot
+                            showBMSYRef = FALSE,  # Show the 0.4 and 0.8 BMSY lines on the plot
+                            leg         = "topright",
+                            add         = FALSE,
+                            opacity     = 90){
   # Biomass plot for an MCMC
   # out is a list of the mcmc outputs to show on the plot
   # col is a list of the colors to use in the plot
   # names is a list of the names to use in the legend
   # ci is the confidence interval to use in percent, eg. 95
+  # offset is the number of years to offset the points and bars
 
   currFuncName <- getCurrFunc()
   if(is.null(out)){
@@ -319,34 +358,64 @@ plotBiomassMCMC <- function(out       = NULL,
     cat0(.PROJECT_NAME,"->",currFuncName,"You must supply a confidence interval in % (ci).")
     return(NULL)
   }
-  oldPar <- par(no.readonly=TRUE)
-  on.exit(par(oldPar))
+  if(!add){
+    oldPar <- par(no.readonly=TRUE)
+    on.exit(par(oldPar))
+  }
 
   burn <- burnthin[[1]]
   thin <- burnthin[[2]]
 
+  # This is required on biomass plots to make the y-axis label visible, only 2nd item is +1 from default
+  par(mar=c(5.1,5.1,4.1,2.1))
+
   # Calculate quantiles for the posterior data if an MCMC is to be plotted
   quants <- vector("list", length(out))
+  boquants <- vector("list", length(out))
   for(model in 1:length(out)){
+    sbo <- window(mcmc(out[[model]]$mcmc$params$bo), start=burn, thin=thin)
     sbt <- window(mcmc(out[[model]]$mcmc$sbt[[1]]), start=burn, thin=thin)
     quants[[model]] <- getQuants(sbt, ci)
+    boquants[[model]] <- getQuants(sbo, ci)
   }
-  yUpper <- max(quants[[1]])
+  yUpper <- max(quants[[1]], boquants[[1]][3])
   for(model in 1:length(out)){
-    yUpper <- max(yUpper, quants[[model]])
+    yUpper <- max(yUpper, quants[[model]], boquants[[1]][3])
   }
 
   yrs <- as.numeric(names(out[[1]]$mcmc$sbt[[1]]))
-  par(mar=c(3,6,3,3))
+  #par(mar=c(3,6,3,3))
   title <- ""
   if(showtitle){
     title <- "Spawning Biomass"
   }
-  drawEnvelope(yrs, quants[[1]], colors[[1]], 0, yUpper, first=TRUE, ylab="Biomass (1000 mt)\n", xlab="Year", main=title, las=1)
+  drawEnvelope(yrs, quants[[1]], colors[[1]], 0, yUpper, first=TRUE, opacity=opacity, ylab="Biomass (1000 mt)\n", xlab="Year", main=title, las=1)
+  # Draw SB0 and uncertainty over top
+  incOffset <- offset
+  points(yrs[1] - incOffset, boquants[[1]][2], pch = 19, col = colors[[1]])
+  arrows(yrs[1] - incOffset, boquants[[1]][1], yrs[1] - incOffset, boquants[[1]][3], lwd = 2, code = 0, col = colors[[1]])
   if(length(out) > 1){
     for(line in 2:length(out)){
-      drawEnvelope(yrs, quants[[line]], colors[[line]], 0, yUpper, first=FALSE)
+      drawEnvelope(yrs, quants[[line]], colors[[line]], 0, yUpper, first=FALSE, opacity=opacity)
+      incOffset <- incOffset + offset
+      points(yrs[1] - incOffset, boquants[[line]][2], pch = 19, col = colors[[line]])
+      arrows(yrs[1] - incOffset, boquants[[line]][1], yrs[1] - incOffset, boquants[[line]][3], lwd = 2, code = 0, col = colors[[line]])
     }
+  }
+  # Add 0.4BMSY, 0.8BMSY, 0.2B0, and 0.4B0 lines for the reference case [[1]] to plot
+  if(showB0Ref){
+    abline(h=0.2*boquants[[1]][2], col="red", lty=1, lwd=2)  # sbo1 set above in loop through models
+    mtext("0.2B0",2,at=0.2*boquants[[1]][2],col="red",las=1)
+    abline(h=0.4*boquants[[1]][2], col="green", lty=1, lwd=2)
+    mtext("0.4B0",2,at=0.4*boquants[[1]][2],col="green",las=1)
+  }
+  if(showBMSYRef){
+    bmsy <- window(mcmc(out[[1]]$mcmc$params$bmsy), start=burn, thin=thin)
+    bmsyquants <- getQuants(bmsy, ci)
+    abline(h=0.4*bmsyquants[2], col="red", lty=2, lwd=2)
+    mtext("0.4BMSY",2,at=0.4*bmsyquants[2],col="red",las=1)
+    abline(h=0.8*bmsyquants[2], col="green", lty=2, lwd=2)
+    mtext("0.8BMSY",2,at=0.8*bmsyquants[2],col="green",las=1)
   }
   if(!is.null(leg)){
     legend(leg, legend=names, col=unlist(colors), lty=1, lwd=2)
@@ -359,7 +428,9 @@ plotDepletionMPD <- function(out       = NULL,
                              lty       = NULL,
                              verbose   = FALSE,
                              showtitle = TRUE,
-                             leg = "topright"){
+                             leg       = "topright",
+                             add       = FALSE,
+                             opacity   = 90){
   # Depletion plot for an MPD
   # out is a list of the mpd outputs to show on the plot
   # col is a list of the colors to use in the plot
@@ -385,25 +456,28 @@ plotDepletionMPD <- function(out       = NULL,
     cat0(.PROJECT_NAME,"->",currFuncName,"You must supply a linetypes vector (lty).")
     return(NULL)
   }
-  oldPar <- par(no.readonly=TRUE)
-  on.exit(par(oldPar))
+  if(!add){
+    oldPar <- par(no.readonly=TRUE)
+    on.exit(par(oldPar))
+  }
+
+  # This is required on biomass plots to make the y-axis label visible, only 2nd item is +1 from default
+  par(mar=c(5.1,5.1,4.1,2.1))
 
   depl <- out[[1]]$mpd$sbt / out[[1]]$mpd$sbo
-  yUpper <- max(depl)
   for(model in 1:length(out)){
     depl <- out[[model]]$mpd$sbt / out[[model]]$mpd$sbo
-    yUpper <- max(yUpper, depl)
   }
   depl <- out[[1]]$mpd$sbt / out[[1]]$mpd$sbo
   title <- ""
   if(showtitle){
-    title <- "Reletive Spawning Biomass"
+    title <- "Relative Spawning Biomass"
   }
-  plot(out[[1]]$mpd$yrs, depl, type="l", col=colors[[1]], lty=lty[[1]], lwd=2,ylim=c(0,yUpper),ylab="Depletion", xlab="Year", main=title, las=1)
+  plot(out[[1]]$mpd$yrs, depl, type="l", col=colors[[1]], lty=lty[[1]], lwd=2,ylim=c(0,1.1),ylab="Relative Spawning Biomass", xlab="Year", main=title, las=1)
   if(length(out) > 1){
     for(line in 2:length(out)){
       depl <- out[[line]]$mpd$sbt / out[[line]]$mpd$sbo
-      lines(out[[line]]$mpd$yrs, depl, type="l", col=colors[[line]], lty=lty[[line]], lwd=2, ylim=c(0,yUpper))
+      lines(out[[line]]$mpd$yrs, depl, type="l", col=colors[[line]], lty=lty[[line]], lwd=2, ylim=c(0,1))
     }
   }
   if(!is.null(leg)){
@@ -418,7 +492,9 @@ plotDepletionMCMC <- function(out       = NULL,
                               burnthin  = list(0,1),
                               verbose   = FALSE,
                               showtitle = TRUE,
-                              leg = "topright"){
+                              leg       = "topright",
+                              add       = FALSE,
+                              opacity   = 90){
   # Depletion plot for an MCMC
   # out is a list of the mcmc outputs to show on the plot
   # col is a list of the colors to use in the plot
@@ -446,11 +522,16 @@ plotDepletionMCMC <- function(out       = NULL,
     cat0(.PROJECT_NAME,"->",currFuncName,"You must supply a confidence interval in % (ci).")
     return(NULL)
   }
-  oldPar <- par(no.readonly=TRUE)
-  on.exit(par(oldPar))
+  if(!add){
+    oldPar <- par(no.readonly=TRUE)
+    on.exit(par(oldPar))
+  }
 
   burn <- burnthin[[1]]
   thin <- burnthin[[2]]
+
+  # This is required on biomass plots to make the y-axis label visible, only 2nd item is +1 from default
+  par(mar=c(5.1,5.1,4.1,2.1))
 
   # Calculate quantiles for the posterior data if an MCMC is to be plotted
   quants <- vector("list", length(out))
@@ -468,12 +549,12 @@ plotDepletionMCMC <- function(out       = NULL,
   yrs <- as.numeric(names(out[[1]]$mcmc$sbt[[1]]))
   title <- ""
   if(showtitle){
-    title <- "Reletive Spawning Biomass"
+    title <- "Relative Spawning Biomass"
   }
-  drawEnvelope(yrs, quants[[1]], colors[[1]], 0, yUpper, first=TRUE, ylab="Depletion", xlab="Year", main=title, las=1)
+  drawEnvelope(yrs, quants[[1]], colors[[1]], 0, max(1.1,yUpper), first=TRUE, opacity=opacity, ylab="Relative Spawning Biomass", xlab="Year", main=title, las=1)
   if(length(out) > 1){
     for(line in 2:length(out)){
-      drawEnvelope(yrs, quants[[line]], colors[[line]], 0, yUpper, first=FALSE)
+      drawEnvelope(yrs, quants[[line]], colors[[line]], 0, yUpper, first=FALSE, opacity=opacity)
     }
   }
   if(!is.null(leg)){
@@ -490,7 +571,9 @@ plotVBiomassMPD <- function(out       = NULL,
                             verbose   = FALSE,
                             showtitle = TRUE,
                             leg = "topright",
-                            showSbio  = FALSE){
+                            showSbio  = FALSE,
+                            add       = FALSE,
+                            opacity   = 90){
   # Vulnerable biomass plot for an MPD
   # out is a list of the mpd outputs to show on the plot
   # col is a list of the colors to use in the plot
@@ -518,11 +601,17 @@ plotVBiomassMPD <- function(out       = NULL,
     cat0(.PROJECT_NAME,"->",currFuncName,"You must supply a linetypes vector (lty).")
     return(NULL)
   }
-  oldPar <- par(no.readonly=TRUE)
-  on.exit(par(oldPar))
+  if(!add){
+    oldPar <- par(no.readonly=TRUE)
+    on.exit(par(oldPar))
+  }
+
   # For vbt from the report file, 1st column is gear number, 2nd column is group, 3rd is year, and 4th is vbt
   # This code will assume only one group, and will ignore the 2nd column
   # Also, only one gear is assumed, which is gear==1 in the first column
+
+  # This is required on biomass plots to make the y-axis label visible, only 2nd item is +1 from default
+  par(mar=c(5.1,5.1,4.1,2.1))
 
   sbt <- out[[1]]$mpd$sbt
   vbt <- out[[1]]$mpd$vbt
@@ -542,7 +631,7 @@ plotVBiomassMPD <- function(out       = NULL,
       yUpper <- max(yUpper, vbt[,4])
     }
   }
-  par(mar=c(3,6,3,3))
+  #par(mar=c(3,6,3,3))
   title <- ""
   if(showtitle){
     if(showSbio){
@@ -589,7 +678,9 @@ plotVBiomassMCMC <- function(out       = NULL,
                              verbose   = FALSE,
                              showtitle = TRUE,
                              leg = "topright",
-                             showSbio  = FALSE){
+                             showSbio  = FALSE,
+                             add       = FALSE,
+                             opacity   = 90){
   # Vulnerable biomass plot for an MCMC
   # out is a list of the mcmc outputs to show on the plot
   # col is a list of the colors to use in the plot
@@ -618,11 +709,16 @@ plotVBiomassMCMC <- function(out       = NULL,
     cat0(.PROJECT_NAME,"->",currFuncName,"You must supply a confidence interval in % (ci).")
     return(NULL)
   }
-  oldPar <- par(no.readonly=TRUE)
-  on.exit(par(oldPar))
+  if(!add){
+    oldPar <- par(no.readonly=TRUE)
+    on.exit(par(oldPar))
+  }
 
   burn <- burnthin[[1]]
   thin <- burnthin[[2]]
+
+  # This is required on biomass plots to make the y-axis label visible, only 2nd item is +1 from default
+  par(mar=c(5.1,5.1,4.1,2.1))
 
   # Calculate quantiles for the posterior data if an MCMC is to be plotted
   squants <- vector("list", length(out))
@@ -642,8 +738,8 @@ plotVBiomassMCMC <- function(out       = NULL,
     }
   }
   syrs <- as.numeric(names(out[[1]]$mcmc$sbt[[1]]))
-  vyrs <- syrs[1:(length(syrs)-1)]
-  par(mar=c(3,6,3,3))
+  vyrs <- syrs[1:length(syrs)]
+  #par(mar=c(3,6,3,3))
   title <- ""
   if(showtitle){
     if(showSbio){
@@ -655,15 +751,17 @@ plotVBiomassMCMC <- function(out       = NULL,
   if(length(out) == 1){
     if(showSbio){
       # Make the spawning biomass the same linetype as the vulnerable, but up one color
-      drawEnvelope(syrs, squants[[1]], colors[[1]] + 1, 0, yUpper, first=TRUE, ylab="Biomass (1000 mt)\n", xlab="Year", main=title, las=1)
-      drawEnvelope(vyrs, vquants[[1]], colors[[1]], 0, yUpper, first=FALSE, ylab="Biomass (1000 mt)\n", xlab="Year", main=title, las=1)
-      vbioname <- paste0("VBio - ",names[[1]])
-      sbioname <- paste0("Sbio - ",names[[1]])
+      drawEnvelope(syrs, squants[[1]], colors[[1]] + 1, 0, yUpper, first=TRUE, opacity=opacity, ylab="Biomass (1000 mt)\n", xlab="Year", main=title, las=1)
+      drawEnvelope(vyrs, vquants[[1]], colors[[1]], 0, yUpper, first=FALSE, opacity=opacity, ylab="Biomass (1000 mt)\n", xlab="Year", main=title, las=1)
+      vbioname <- "Vulnerable B"
+      sbioname <- "Spawning B"
+#      vbioname <- paste0("VBio - ",names[[1]])
+#      sbioname <- paste0("Sbio - ",names[[1]])
       names[[1]] <- vbioname
       names[[2]] <- sbioname
       colors[[2]] <- colors[[1]] + 1
     }else{
-      drawEnvelope(vyrs, vquants[[1]], colors[[1]], 0, yUpper, first=TRUE, ylab="Biomass (1000 mt)\n", xlab="Year", main=title, las=1)
+      drawEnvelope(vyrs, vquants[[1]], colors[[1]], 0, yUpper, first=TRUE, opacity=opacity, ylab="Biomass (1000 mt)\n", xlab="Year", main=title, las=1)
     }
   }
   if(length(out) > 1 && !showSbio){
@@ -671,9 +769,9 @@ plotVBiomassMCMC <- function(out       = NULL,
       vbt <- window(mcmc(out[[model]]$mcmc$vbt[[1]][[1]]), start=burn, thin=thin)
       vquants[[model]] <- getQuants(vbt, ci)
       if(line==1){
-        drawEnvelope(vyrs, vquants[[line]], colors[[line]], 0, yUpper, first=TRUE)
+        drawEnvelope(vyrs, vquants[[line]], colors[[line]], 0, yUpper, first=TRUE, opacity=opacity)
       }else{
-        drawEnvelope(vyrs, vquants[[line]], colors[[line]], 0, yUpper, first=FALSE)
+        drawEnvelope(vyrs, vquants[[line]], colors[[line]], 0, yUpper, first=FALSE, opacity=opacity)
       }
     }
   }
@@ -693,6 +791,8 @@ plotRecruitmentMPD <- function(out       = NULL,
                                lty       = NULL,
                                verbose   = FALSE,
                                showtitle = TRUE,
+                               add       = FALSE,
+                               recrShowFinalYear = TRUE,
                                leg = "topright"){
   # Recruitment plot for an MPD
   # out is a list of the mpd outputs to show on the plot
@@ -719,18 +819,28 @@ plotRecruitmentMPD <- function(out       = NULL,
     cat0(.PROJECT_NAME,"->",currFuncName,"You must supply a linetypes vector (lty).")
     return(NULL)
   }
+  if(!add){
+    oldPar <- par(no.readonly=TRUE)
+    on.exit(par(oldPar))
+  }
 
-  oldPar <- par(no.readonly=TRUE)
-  on.exit(par(oldPar))
+  # This is required on biomass plots to make the y-axis label visible, only 2nd item is +1 from default
+  par(mar=c(5.1,5.1,4.1,2.1))
 
   sage   <- out[[1]]$mpd$sage
   nyear  <- length(out[[1]]$mpd$yr)
   ryr    <- out[[1]]$mpd$yr[(1+sage):nyear]
   rt     <- out[[1]]$mpd$rt
-
+  if(!recrShowFinalYear){
+    ryr <- ryr[-length(ryr)]
+    rt <- rt[-length(rt)]
+  }
   yUpper <- max(rt)
   for(model in 1:length(out)){
     tmprt  <- out[[model]]$mpd$rt
+    if(!recrShowFinalYear){
+      tmprt <- tmprt[-length(tmprt)]
+    }
     yUpper <- max(yUpper, tmprt)
   }
   xlim <- c(min(ryr), max(ryr))
@@ -739,6 +849,10 @@ plotRecruitmentMPD <- function(out       = NULL,
       tmpsage  <- out[[model]]$mpd$sage
       tmpnyear <- length(out[[model]]$mpd$yr)
       tmpryr   <- out[[model]]$mpd$ryr[(1+tmpsage):nyear]
+      if(!recrShowFinalYear){
+        tmpryr <- tmpryr[-length(tmpryr)]
+        tmprt <- tmprt[-length(tmprt)]
+      }
       minx     <- min(min(tmpryr), min(xlim))
       maxx     <- max(max(tmpryr), max(xlim))
       xlim     <- c(minx, maxx)
@@ -748,7 +862,6 @@ plotRecruitmentMPD <- function(out       = NULL,
   if(showtitle){
     title <- "Recruitment"
   }
-
   plot(ryr, rt, type = "o", col=colors[[1]], pch=19, lty=lty[[1]], lwd=2, ylim=c(0,yUpper), xlim=xlim,
        ylab="Recruitment (millions)", xlab="Year", main=title, las=1)
   if(length(out) > 1){
@@ -757,6 +870,10 @@ plotRecruitmentMPD <- function(out       = NULL,
       nyear <- length(out[[line]]$mpd$yr)
       ryr   <- out[[line]]$mpd$yr[(1+sage):nyear]
       rt    <- out[[line]]$mpd$rt
+      if(!recrShowFinalYear){
+        ryr <- ryr[-length(ryr)]
+        rt <- rt[-length(rt)]
+      }
       lines(ryr, rt, type="o",col=colors[[line]], pch=19, lty=lty[[line]], lwd=2, ylim=c(0,yUpper), las=1)
     }
   }
@@ -773,6 +890,8 @@ plotRecruitmentMCMC <- function(out       = NULL,
                                 offset    = 0.1,
                                 verbose   = FALSE,
                                 showtitle = TRUE,
+                                add       = FALSE,
+                                recrShowFinalYear = TRUE,
                                 leg = "topright"){
   # Recruitment plot for an MCMC
   # out is a list of the mcmc outputs to show on the plot
@@ -804,17 +923,25 @@ plotRecruitmentMCMC <- function(out       = NULL,
     cat0(.PROJECT_NAME,"->",currFuncName,"You must supply a confidence interval in % (ci).")
     return(NULL)
   }
-  oldPar <- par(no.readonly=TRUE)
-  on.exit(par(oldPar))
+  if(!add){
+    oldPar <- par(no.readonly=TRUE)
+    on.exit(par(oldPar))
+  }
 
   burn <- burnthin[[1]]
   thin <- burnthin[[2]]
+
+  # This is required on biomass plots to make the y-axis label visible, only 2nd item is +1 from default
+  par(mar=c(5.1,5.1,4.1,2.1))
 
   # Calculate quantiles for the posterior data if an MCMC is to be plotted
   quants <- vector("list", length(out))
   for(model in 1:length(out)){
    #quants[[model]] <- getQuants(out[[model]]$mcmc$rt[[1]], ci)
    rt <- window(mcmc(out[[model]]$mcmc$rt[[1]]), start=burn, thin=thin)
+   if(!recrShowFinalYear){
+     rt <- rt[,-ncol(rt)]
+   }
    quants[[model]] <- getQuants(rt, ci)
   }
   yUpper <- max(quants[[1]])
@@ -823,12 +950,18 @@ plotRecruitmentMCMC <- function(out       = NULL,
   }
 
   yrs <- as.numeric(names(out[[1]]$mcmc$rt[[1]]))
+  if(!recrShowFinalYear){
+    yrs <- yrs[-length(yrs)]
+  }
 
   #RF - need to get xlim in case time series lengths differ
   Xlim <- c(min(yrs), max(yrs))
   if(length(out)>1){
     for(model in 1:length(out)){
-      tmpryr     <- as.numeric(names(out[[model]]$mcmc$rt[[1]]))
+      tmpryr <- as.numeric(names(out[[model]]$mcmc$rt[[1]]))
+      if(!recrShowFinalYear){
+        tmpryr <- tmpryr[-length(tmpryr)]
+      }
       minx <- min(min(tmpryr), min(Xlim))
       maxx <- max(max(tmpryr), max(Xlim))
       Xlim <- c(minx, maxx)
@@ -838,7 +971,6 @@ plotRecruitmentMCMC <- function(out       = NULL,
   if(showtitle){
     title <- "Recruitment"
   }
-
   plot(yrs, quants[[1]][2,], type="p", pch=20, col=colors[[1]], ylim=c(0,yUpper), xlim=Xlim, xlab="Year", ylab="Recruitment (millions)", main=title, las=1)
   arrows(yrs, quants[[1]][1,],
          yrs, quants[[1]][3,], col=colors[[1]], code=3, angle=90, length=0.01)
@@ -846,6 +978,9 @@ plotRecruitmentMCMC <- function(out       = NULL,
     incOffset <- offset
     for(line in 2:length(out)){
       yrs <- as.numeric(names(out[[line]]$mcmc$rt[[1]]))
+      if(!recrShowFinalYear){
+        yrs <- yrs[-length(yrs)]
+      }
       # Plot the uncertainty
       points(yrs+incOffset, quants[[line]][2,], pch=20, col=colors[[line]])
       arrows(yrs+incOffset, quants[[line]][1,],
@@ -872,6 +1007,7 @@ plotRecruitmentDevsMCMC <- function(out       = NULL,
                                     offset    = 0.1,
                                     verbose   = FALSE,
                                     showtitle = TRUE,
+                                    add       = FALSE,
                                     leg = "topright"){
   # Recruitment deviations plot for an MCMC
   # out is a list of the mcmc outputs to show on the plot
@@ -901,11 +1037,16 @@ plotRecruitmentDevsMCMC <- function(out       = NULL,
     cat0(.PROJECT_NAME,"->",currFuncName,"You must supply a confidence interval in % (ci).")
     return(NULL)
   }
-  oldPar <- par(no.readonly=TRUE)
-  on.exit(par(oldPar))
+  if(!add){
+    oldPar <- par(no.readonly=TRUE)
+    on.exit(par(oldPar))
+  }
 
   burn <- burnthin[[1]]
   thin <- burnthin[[2]]
+
+  # This is required on biomass plots to make the y-axis label visible, only 2nd item is +1 from default
+  par(mar=c(5.1,5.1,4.1,2.1))
 
   # Calculate quantiles for the posterior data if an MCMC is to be plotted
   quants <- vector("list", length(out))
@@ -925,13 +1066,12 @@ plotRecruitmentDevsMCMC <- function(out       = NULL,
   if(showtitle){
     title <- "Recruitment Deviations"
   }
-	plot(yrs, quants[[1]][2,], type="p", pch=20, col=colors[[1]], ylim=c(yLower,yUpper), xlab="Year", ylab="Recruitment Deviations", main=title, las=1)
+	plot(yrs, quants[[1]][2,], type="p", pch=20, col=colors[[1]], ylim=c(yLower,yUpper), xlab="Year", ylab="Log recruitment deviations", main=title, las=1)
   	arrows(yrs, quants[[1]][1,], yrs, quants[[1]][3,], col=colors[[1]], code=3, angle=90, length=0.01)
-	  
-		  #drawEnvelope(yrs, quants[[1]], colors[[1]], yLower, yUpper, first=TRUE, ylab="Recruitment Deviations", xlab="Year", main=title, las=1)
+		  #drawEnvelope(yrs, quants[[1]], colors[[1]], yLower, yUpper, first=TRUE, opacity=opacity, ylab="Recruitment Deviations", xlab="Year", main=title, las=1)
 		  #if(length(out) > 1){
 		   # for(line in 2:length(out)){
-		   #   drawEnvelope(yrs, quants[[line]], colors[[line]], yLower, yUpper, first=FALSE)
+		   #   drawEnvelope(yrs, quants[[line]], colors[[line]], yLower, yUpper, first=FALSE, opacity=opacity)
 		   # }
                     #}
   	 if(length(out) > 1){
@@ -954,6 +1094,7 @@ plotRecruitmentDevsMPD <- function(out       = NULL,
                                    lty       = NULL,
                                    verbose   = FALSE,
                                    showtitle = TRUE,
+                                   add       = FALSE,
                                    leg = "topright"){
   # Recruitment deviations plot for an MPD
   # out is a list of the mpd outputs to show on the plot
@@ -984,9 +1125,13 @@ plotRecruitmentDevsMPD <- function(out       = NULL,
     cat0(.PROJECT_NAME,"->",currFuncName,"You must supply a linetypes vector (lty).")
     return(NULL)
   }
+  if(!add){
+    oldPar <- par(no.readonly=TRUE)
+    on.exit(par(oldPar))
+  }
 
-  oldPar <- par(no.readonly=TRUE)
-  on.exit(par(oldPar))
+  # This is required on biomass plots to make the y-axis label visible, only 2nd item is +1 from default
+  par(mar=c(5.1,5.1,4.1,2.1))
 
   ryr    <- out[[1]]$mpd$yr
   rt     <- parout[[1]]$log_rec_devs
@@ -1016,7 +1161,7 @@ plotRecruitmentDevsMPD <- function(out       = NULL,
   }
 
   plot(ryr, rt, type = "o", col=colors[[1]], pch=19, lty=lty[[1]], lwd=2, ylim=ylim, xlim=xlim,
-       ylab="Recruitment deviations (millions)", xlab="Year", main=title, las=1)
+       ylab="Log recruitment deviations (millions)", xlab="Year", main=title, las=1)
   if(length(out) > 1){
     for(line in 2:length(out)){
       ryr   <- out[[line]]$mpd$yr
@@ -1030,16 +1175,17 @@ plotRecruitmentDevsMPD <- function(out       = NULL,
   }
 }
 
-plotIndexMPD <- function(scenario  = NULL,
-                         out       = NULL,
-                         inputs    = NULL,
-                         index     = NULL,
-                         colors    = NULL,
-                         names     = NULL,
-                         lty       = NULL,
-                         verbose   = FALSE,
-                         showtitle = TRUE,
-                         leg = "topright",
+plotIndexMPD <- function(scenario   = NULL,
+                         out        = NULL,
+                         inputs     = NULL,
+                         index      = NULL,
+                         colors     = NULL,
+                         names      = NULL,
+                         lty        = NULL,
+                         verbose    = FALSE,
+                         showtitle  = TRUE,
+                         leg        = "topright",
+                         add        = FALSE,
                          indfixaxis = FALSE){
   # Index fits plot for an MPD
   # scenario is the sccenario number. Only used if 'out' is of length 1.
@@ -1086,8 +1232,10 @@ plotIndexMPD <- function(scenario  = NULL,
     cat0(.PROJECT_NAME,"->",currFuncName,"You must supply an index number for plotting (index).")
     return(NULL)
   }
-  oldPar <- par(no.readonly=TRUE)
-  on.exit(par(oldPar))
+  if(!add){
+    oldPar <- par(no.readonly=TRUE)
+    on.exit(par(oldPar))
+  }
 
   ## For future: No assumption of first model having all indices
   # Get the names of all models' input indices so that the plot will work
@@ -1181,16 +1329,21 @@ plotIndexMPD <- function(scenario  = NULL,
       xmin <- min(xmin, indices[[ind]][,1])
       xmax <- max(xmax, indices[[ind]][,1])
     }
+    ymax <- max(inputindices$it + cv * inputindices$it)
+    xlim <- c(xmin, xmax)
+    ylim <- c(0, ymax)
     matplot(yrs, mat, type = "l", lwd = 2, lty = unlist(lty), col = unlist(colors),
-            las = 1, main = title, xlim = c(xmin, xmax),
-            ylim = c(0,max(mat, inputindices$it + cv * inputindices$it)), xlab="Year",
-            ylab="x 1000 metric tonnes") #, axes=FALSE)
-    #axis(1, at = seq(xmin,xmax))
-    #axis(2, at = seq(0, max(mat, inputindices$it + cv * inputindices$it), by = max(mat, inputindices$it + cv * inputindices$it) / 10))
+            las = 1, main = title, xlim = xlim, ylim = ylim, xlab="",
+            ylab="", axes=FALSE)
   }else{
+    xmin <- min(yrs)
+    xmax <- max(yrs)
+    ymax <- max(inputindices$it + cv * inputindices$it)
+    xlim <- c(xmin, xmax)
+    ylim <- c(0, ymax)
     matplot(yrs, mat, type = "l", lwd = 2, lty = unlist(lty), col = unlist(colors),
-            las = 1, main = title, ylim = c(0,max(mat, inputindices$it + cv * inputindices$it)),
-            xlab="Year", ylab="x 1000 metric tonnes") #, axes=FALSE)
+            las = 1, main = title, ylim = ylim,
+            xlab="", ylab="", axes=FALSE)
     #axis(1, at = yrs)
     #axis(2, at = seq(0, max(mat, inputindices$it + cv * inputindices$it), by = max(mat, inputindices$it + cv * inputindices$it) / 10))
   }
@@ -1198,8 +1351,15 @@ plotIndexMPD <- function(scenario  = NULL,
   arrows(yrs, inputindices$it + cv * inputindices$it ,yrs, inputindices$it - cv * inputindices$it,
          code = 3, angle = 90, length = 0.01, col = "black")
 
+  axis(1, at     = seq(min(xlim),max(xlim)),
+          labels = seq(min(xlim),max(xlim)))
+  axis(2)
+  box()
+  mtext("Year", 1, line=2)
+  mtext("x 1,000 tonnes", 2, line=2)
+
   if(!is.null(leg)){
-    legend(leg, legend=names, col=unlist(colors), lty=unlist(lty), lwd=2)
+    legend(leg, legend=names, col=unlist(colors), lty=unlist(lty), lwd=2, y.intersp=1)
   }
 }
 
@@ -1211,7 +1371,9 @@ plotFMPD <- function(out       = NULL,
                      verbose   = FALSE,
                      showtitle = TRUE,
                      leg       = "topright",
-                     plotU     = FALSE){
+                     plotU     = FALSE,
+                     add       = FALSE,
+                     opacity   = 90){
   # Fishing mortality plot for an MPD
   # out is a list of the mpd outputs to show on the plot
   # col is a list of the colors to use in the plot
@@ -1235,8 +1397,13 @@ plotFMPD <- function(out       = NULL,
     cat0(.PROJECT_NAME,"->",currFuncName,"You must supply a names vector (names).")
     return(NULL)
   }
-  oldPar <- par(no.readonly=TRUE)
-  on.exit(par(oldPar))
+  if(!add){
+    oldPar <- par(no.readonly=TRUE)
+    on.exit(par(oldPar))
+  }
+
+  # This is required on biomass plots to make the y-axis label visible, only 2nd item is +1 from default
+  par(mar=c(5.1,5.1,4.1,2.1))
 
   nsex   <- out[[1]]$mpd$nsex
   yrs    <- out[[1]]$mpd$yr
@@ -1359,7 +1526,9 @@ plotFMCMC <- function(out       = NULL,
                       verbose   = FALSE,
                       showtitle = TRUE,
                       leg       = "topright",
-                      plotU     = FALSE){
+                      plotU     = FALSE,
+                      add       = FALSE,
+                      opacity   = 90){
   # Fishing mortality plot for mcmc models
   # col is a list of the colors to use in the plot
   # names is a list of the names to use in the legend
@@ -1384,11 +1553,16 @@ plotFMCMC <- function(out       = NULL,
     cat0(.PROJECT_NAME,"->",currFuncName,"You must supply a names vector (names).")
     return(NULL)
   }
-  oldPar <- par(no.readonly=TRUE)
-  on.exit(par(oldPar))
+  if(!add){
+    oldPar <- par(no.readonly=TRUE)
+    on.exit(par(oldPar))
+  }
 
   burn <- burnthin[[1]]
   thin <- burnthin[[2]]
+
+  # This is required on biomass plots to make the y-axis label visible, only 2nd item is +1 from default
+  par(mar=c(5.1,5.1,4.1,2.1))
 
   # Calculate quantiles for the posterior data
   quants <- vector("list", length(out))
@@ -1415,20 +1589,20 @@ plotFMCMC <- function(out       = NULL,
   ynames <- names(out[[1]]$mcmc$ft[[1]][[1]])
   pattern <- ".*_([0-9]+)"
   yrs <- as.numeric(sub(pattern,"\\1",ynames))
-  par(mar=c(3,6,3,3))
+  #par(mar=c(3,6,3,3))
   title <- ""
   if(showtitle){
     title <- "Fishing Mortality"
   }
   if(plotU){
-    ylabel <- "U\n"
+    ylabel <- "U"
   }else{
-    ylabel <- "F\n"
+    ylabel <- "F"
   }
-  drawEnvelope(yrs, quants[[1]], colors[[1]], 0, yUpper, first=TRUE, ylab=ylabel, xlab="Year", main=title, las=1)
+  drawEnvelope(yrs, quants[[1]], colors[[1]], 0, yUpper, first=TRUE, opacity=opacity, ylab=ylabel, xlab="Year", main=title, las=1)
   if(length(out) > 1){
     for(line in 2:length(out)){
-      drawEnvelope(yrs, quants[[line]], colors[[line]], 0, yUpper, first=FALSE)
+      drawEnvelope(yrs, quants[[line]], colors[[line]], 0, yUpper, first=FALSE, opacity=opacity)
     }
   }
   if(!is.null(leg)){
@@ -1447,12 +1621,17 @@ plotReferencePointsMCMC <- function(out       = NULL,
                                     pointSize = 0.2,
                                     verbose   = FALSE,
                                     showtitle = TRUE,
-                                    leg = "topright"){
+                                    leg       = "topright",
+                                    shortnames= NULL,
+                                    add       = FALSE,
+                                    showumsy  = FALSE){
   # Reference points plot for an MCMC model
   # col is a list of the colors to use in the plot
   # names is a list of the names to use in the legend
   # ci is the confidence interval to use in percent, eg. 95
   # pch and pointsize are passed to the plot function. pointSize is in fact 'cex'
+  # showumsy if TRUE will plot Umsy instead of Fmsy
+  # shortnames if not null will be used instead of full names
   currFuncName <- getCurrFunc()
   if(is.null(out)){
     cat0(.PROJECT_NAME,"->",currFuncName,"You must supply an output vector (out).")
@@ -1474,9 +1653,10 @@ plotReferencePointsMCMC <- function(out       = NULL,
     cat0(.PROJECT_NAME,"->",currFuncName,"You must supply a confidence interval in % (ci).")
     return(NULL)
   }
-
-  oldPar <- par(no.readonly=TRUE)
-  on.exit(par(oldPar))
+  if(!add){
+    oldPar <- par(no.readonly=TRUE)
+    on.exit(par(oldPar))
+  }
 
   burn <- burnthin[[1]]
   thin <- burnthin[[2]]
@@ -1484,7 +1664,7 @@ plotReferencePointsMCMC <- function(out       = NULL,
   bo   <- as.vector(window(mcmc(out[[1]]$mcmc$params$bo), start=burn, thin=thin))
   bmsy <- as.vector(window(mcmc(out[[1]]$mcmc$params$bmsy), start=burn, thin=thin))
   msy  <- as.vector(window(mcmc(out[[1]]$mcmc$params$msy1), start=burn, thin=thin))
-  #fmsy <- as.vector(window(mcmc(out[[1]]$mcmc$params$fmsy1), start=burn, thin=thin))
+  fmsy <- as.vector(window(mcmc(out[[1]]$mcmc$params$fmsy1), start=burn, thin=thin))
   umsy <- as.vector(window(mcmc(out[[1]]$mcmc$params$umsy1), start=burn, thin=thin))
 
   if(length(out) > 1){
@@ -1492,23 +1672,121 @@ plotReferencePointsMCMC <- function(out       = NULL,
       bo   <- cbind(bo, as.vector(window(mcmc(out[[model]]$mcmc$params$bo), start=burn, thin=thin)))
       bmsy <- cbind(bmsy, as.vector(window(mcmc(out[[model]]$mcmc$params$bmsy), start=burn, thin=thin)))
       msy  <- cbind(msy, as.vector(window(mcmc(out[[model]]$mcmc$params$msy1), start=burn, thin=thin)))
-      #fmsy <- cbind(fmsy, as.vector(window(mcmc(out[[model]]$mcmc$params$fmsy1), start=burn, thin=thin)))
-      umsy <- cbind(fmsy, as.vector(window(mcmc(out[[model]]$mcmc$params$umsy1), start=burn, thin=thin)))
+      fmsy <- cbind(fmsy, as.vector(window(mcmc(out[[model]]$mcmc$params$fmsy1), start=burn, thin=thin)))
+      umsy <- cbind(umsy, as.vector(window(mcmc(out[[model]]$mcmc$params$umsy1), start=burn, thin=thin)))
     }
   }
 
   colors <- c(do.call("cbind",colors)) # Convert colors list to vector
   names  <- c(do.call("cbind",names))
+  if(!is.null(shortnames)){
+    names <- shortnames
+  }
 
   par(mfrow=c(2,2), mai=c(0.3,0.5,0.4,0.2), oma=c(1.,1.2,0.2,0.1))
- # ymax <- max(fmsy)
-  #boxplot(fmsy, pch=pch, range = ci/100, names=names, border=colors, main="FMSY", las=1, cex.axis=1.2, cex=1.2, ylim=c(0,ymax))
-  ymax <- 1.1
-  boxplot(umsy, pch=pch, range = ci/100, names=names, border=colors, main="UMSY", las=1, cex.axis=1.2, cex=1.2, ylim=c(0,ymax))
- ymax <- max(msy)
+  if(showumsy){
+    ymax <- 1.1
+    boxplot(umsy, pch=pch, range = ci/100, names=names, border=colors, main="UMSY", las=1, cex.axis=1.2, cex=1.2, ylim=c(0,ymax))
+  }else{
+    ymax <- max(fmsy)
+    boxplot(fmsy, pch=pch, range = ci/100, names=names, border=colors, main="FMSY", las=1, cex.axis=1.2, cex=1.2, ylim=c(0,ymax))
+  }
+  ymax <- max(msy)
   boxplot(msy, pch=pch, range = ci/100, names=names, border=colors, main="MSY (1000mt)", las=1, cex.axis=1.2, cex=1.2, ylim=c(0,ymax))
   ymax <- max(bo)
   boxplot(bo, pch=pch, range = ci/100, names=names, border=colors, main="B0 (1000mt)", las=1, cex.axis=1.2, cex=1.2, ylim=c(0,ymax))
   ymax <- max(bmsy)
   boxplot(bmsy, pch=pch, range = ci/100, names=names, border=colors, main="BMSY (1000mt)", las=1, cex.axis=1.2, cex=1.2, ylim=c(0,ymax))
+}
+
+plotIndexData <- function(scenario   = NULL,
+                          index      = NULL,
+                          showtitle  = TRUE,
+                          indfixaxis = FALSE){
+  # Index data plot
+  # scenario is the scenario number.
+  # col is a list of the colors to use in the plot
+  # names is a list of the names to use in the legend
+  # Notes:
+  # - Models may have different gears than others, but we want the index plots to match by gear.
+  #   The solution is to match them by name if plotting multiple (sensitivity plots)
+  #   by creating a unique vector of names which is the union of all names across all models
+  #   and using that to match to the names in each model, only plotting if the name is found.
+  # indfixaxis, if TRUE then all index plots will be scaled to the overall year span of all indices
+
+  currFuncName <- getCurrFunc()
+  oldPar <- par(no.readonly=TRUE)
+  on.exit(par(oldPar))
+
+  # Get index names included in the model
+  inputs <- op[[1]]$inputs$data
+  indices <- inputs$indices
+  gearindices <- NULL
+  for(ind in 1:length(indices)){
+    indexmat <- as.data.frame(indices[[ind]])
+    gearindices <- c(gearindices, unique(indexmat$gear))
+  }
+  if(!is.element(index,gearindices)){
+    cat0(.PROJECT_NAME,"->",currFuncName,"That gear does not have an index in the model.")
+    return(NULL)
+  }
+  currindexname <- inputs$gearNames[index]
+  mat <- NULL
+  # For each model, match the data with the gear name 'currgearname'
+  # If it does not match, it will be skipped
+  indexname <- inputs$gearNames[index]
+  gearnum <- match(currindexname, inputs$gearNames)
+  if(is.na(gearnum)){
+    cat0(.PROJECT_NAME,"->",currFuncName,"That gear does not have an index in the model.")
+    return(NULL)
+  }else{
+    indices <- inputs$indices
+    gearindreal <- NA
+    for(ind in 1:length(indices)){
+      indexmat <- as.data.frame(indices[[ind]])
+      gearindex <- unique(indexmat$gear)
+      if(gearindex == gearnum){
+        gearindreal <- ind
+      }
+    }
+    if(!is.na(gearindreal)){
+      inputindices <- as.data.frame(indices[[gearindreal]])
+      yrs          <- inputindices$iyr
+      cv           <- 1 / inputindices$wt
+    }else{
+      cat0(.PROJECT_NAME,"->",currFuncName,"That gear does not have an index in the model.")
+      return(NULL)
+    }
+  }
+  title <- ""
+  if(showtitle){
+    title <- paste0("Index fit - ",currindexname)
+  }
+  # If user requests a fixed scale x-axis, go through all indices to get year range
+  ymin <- 0
+  ymax <- NULL
+  if(indfixaxis){
+    xmin <- NULL
+    xmax <- NULL
+    for(ind in 1:length(indices)){
+      xmin <- min(xmin, indices[[ind]][,1])
+      xmax <- max(xmax, indices[[ind]][,1])
+    }
+    ymax <- max(inputindices$it + cv * inputindices$it)
+  }else{
+    xmin <- min(yrs)
+    xmax <- max(yrs)
+    ymax <- max(inputindices$it + cv * inputindices$it)
+  }
+  xlim <- c(xmin, xmax)
+  ylim <- c(ymin, ymax)
+  plot(yrs, inputindices$it, type="p", pch = 3, ylim=ylim, xlim=xlim, ylab="", xlab="", axes=FALSE)
+  arrows(yrs, inputindices$it + cv * inputindices$it ,yrs, inputindices$it - cv * inputindices$it,
+         code = 3, angle = 90, length = 0.01, lwd=2, col = "black")
+  axis(1, at     = seq(min(xlim),max(xlim)),
+          labels = seq(min(xlim),max(xlim)))
+  axis(2)
+  box()
+  mtext("Year", 1, line=2)
+  mtext("x 1,000 tonnes", 2, line=2)
 }

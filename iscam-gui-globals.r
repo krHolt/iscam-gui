@@ -34,6 +34,7 @@ if(.OS == "Darwin"){
 .UTILITIES_SOURCE                <- paste0(.PROJECT_NAME,"-utilities.r")
 .LOAD_SCENARIOS_SOURCE           <- paste0(.PROJECT_NAME,"-load-scenarios.r")
 .LOAD_BIODATA_SOURCE             <- paste0(.PROJECT_NAME,"-load-biodata.r")
+.LOAD_CATCHDATA_SOURCE           <- paste0(.PROJECT_NAME,"-load-catchdata.r")
 .FILE_CONTROL_SOURCE             <- paste0(.PROJECT_NAME,"-file-control.r")
 .REP_PARSER_SOURCE               <- paste0(.PROJECT_NAME,"-reptorlist.r")
 .FIGURES_SOURCE                  <- paste0(.PROJECT_NAME,"-figures.r")
@@ -44,9 +45,10 @@ if(.OS == "Darwin"){
 .FIGURES_MCMC_SOURCE             <- paste0(.PROJECT_NAME,"-figures-mcmc-diagnostics.r")
 .FIGURES_MLE_SOURCE              <- paste0(.PROJECT_NAME,"-figures-mle-diagnostics.r")
 .FIGURES_RETROSPECTIVES_SOURCE   <- paste0(.PROJECT_NAME,"-figures-retrospectives.r")
+.TABLES_SOURCE                   <- paste0(.PROJECT_NAME,"-tables.r")
 
 # Plotting theme (ggplot). Only used in observed catch plot at this point.
-.PLOT_THEME                      <- theme_bw(11)
+#.PLOT_THEME                      <- theme_bw(11)
 
 # GUI definition files (see PBSModelling package)
 .MAIN_GUI_DEF_FILE               <- paste0(.PROJECT_NAME,"-gui-specs.txt")
@@ -87,6 +89,11 @@ if(.OS == "Linux" || .OS == "Darwin"){
 .MA_TPL_FILE_NAME                <- paste0(.MA_EXE_BASE_NAME,".tpl")
 .MA_REP_FILE_NAME                <- paste0(.MA_EXE_BASE_NAME,".rep")
 
+# Catch data directory and file name(s)
+.CATCHDATA_DIR_NAME              <- "Catchdata"
+.CATCHDATA_FILE_TYPES            <- list(c("rda"),c("rdata"))
+.CATCHDATA_FILE_NAME             <- file.path(.CATCHDATA_DIR_NAME, "catch.rdata.")
+
 # Sensitivity file name (for grouping sensitivities together on plots)
 .SCENARIO_INFO_FILE_NAME         <- "ScenarioInfo.txt"
 
@@ -96,7 +103,10 @@ if(.OS == "Linux" || .OS == "Darwin"){
 .MCMC_RECRUITMENT_FILE_NAME      <- "iscam_rt_mcmc.csv"
 .MCMC_RECRUITMENT_DEVS_FILE_NAME <- "iscam_rdev_mcmc.csv"
 .MCMC_FISHING_MORT_FILE_NAME     <- "iscam_ft_mcmc.csv"
+.MCMC_FISHING_MORT_U_FILE_NAME   <- "iscam_ut_mcmc.csv"
 .MCMC_VULN_BIOMASS_FILE_NAME     <- "iscam_vbt_mcmc.csv"
+.MCMC_PROJ_FILE_NAME             <- "iscammcmc_proj_Gear1.csv" # Note that projections only work for gear 1
+.MPD_PROJ_FILE_NAME              <- "iscammpd_proj_Gear1.csv" # Note that projections only work for gear 1
 
 # MCMC convergence plot margins
 .MCMC_MARGINS                    <- c(2,4,2,2)
@@ -110,7 +120,7 @@ if(.OS == "Linux" || .OS == "Darwin"){
 # Messages
 .TELL_USER_HOW_TO_START_GUI      <- "Type iscam() to start iscam-gui\n"
 .TELL_USER_ABOUT_GUI_ARGUMENTS   <- paste0("Optional ",.PROJECT_NAME," arguments: ",.MAIN_FUNCTION_CALL,
-                                           "(reloadScenarios = FALSE, silent = FALSE)\n\n")
+                                           "(reloadScenarios = FALSE, showgui = TRUE, silent = TRUE)\n\n")
 
 # Model run command line outputs
 .LOG_FILE_NAME                   <- "runoutput.log"  # This is the name of the logfile which holds all command line output.
@@ -142,7 +152,7 @@ if(.OS == "Linux" || .OS == "Darwin"){
                                   "*.eva",
                                   "*.hes",
                                   "*.par",
-                                  "*.re*",
+                                  "*\\.re*",
                                   "*.std",
                                   "*.psv",
                                   "variance",
@@ -156,7 +166,11 @@ if(.OS == "Linux" || .OS == "Darwin"){
                                   .MCMC_FILE_NAME,
                                   .MCMC_BIOMASS_FILE_NAME,
                                   .MCMC_RECRUITMENT_FILE_NAME,
-                                  .MCMC_FISHING_MORT_FILE_NAME
+                                  .MCMC_FISHING_MORT_FILE_NAME,
+                                  .MCMC_VULN_BIOMASS_FILE_NAME,
+                                  .MCMC_RECRUITMENT_DEVS_FILE_NAME,
+                                  .MCMC_FISHING_MORT_U_FILE_NAME,
+                                  .MPD_PROJ_FILE_NAME
                                   # Executable
                                   #.EXE_FILE_NAME  -- RF don't delete the executable!
                                   )
@@ -164,7 +178,8 @@ if(.OS == "Linux" || .OS == "Darwin"){
 .PNG_TYPE                        <- ".png"
 .EPS_TYPE                        <- ".eps"
 .FIGURE_TYPE                     <- .EPS_TYPE # This must match the default radio entry
-.SAVEFIG                         <- FALSE
+.SAVEFIG                         <- FALSE # Save figures?
+.SAVETAB                         <- FALSE # Save tables?
 .DEPLETION_FIGURE                <- 1
 
 # Plotting

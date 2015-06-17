@@ -1,4 +1,4 @@
-.getShade <- function(color,opacity){
+.getShade <- function(color, opacity){
   # If color is a single R color string or single number,
   #  returns an rgb string of the specified color and opacity
   # If color is a vector of cR color strings or numbers,
@@ -13,7 +13,7 @@
   #
   # The opacity agrument is scalar and will be applied to all colors.
   if(!(opacity %% 1 == 0) || opacity<0 || opacity>99){
-    cat(getCurrFunc(),"opacity argument must be an integer between 0 and 99.\n",sep="")
+    cat0(.PROJECT_NAME,"->",currFuncName,"opacity argument must be an integer between 0 and 99.")
     return(NULL)
   }
   colorDEC <- col2rgb(color)
@@ -140,11 +140,42 @@ getQuants <- function(data=NULL, ci=NULL){
   }
   ciprop <- ci / 100
   probs <- c((1-ciprop)/2,0.5,1-((1-ciprop)/2))
-  quants <- apply(data, 2, quantile, probs)
+  if(is.null(dim(data))){
+    # It is a single posterior, e.g. sbo
+    quants <- quantile(data, probs)
+  }else{
+    # It is a timeseries posterior, e.g. sbt
+    quants <- apply(data, 2, quantile, probs)
+  }
   return(quants)
 }
 
-drawEnvelope <- function(yrs, quants, color, yLower = 0, yUpper, first, ...){
+drawEnvelope <- function(yrs, quants, color, yLower = 0, yUpper, first, opacity = 90, ...){
+  # Draw a time series envelope on a device on which plot.new has already been called
+  # Assumptions: quants is a 3-row matrix,
+  #  where the middle row is the median and the other two are the lower and upper
+  #  values for some confidence interval.
+  # yUpper is the upper limit for the y-axis
+  # first is a boolean, if TRUE, plot will be called. If FALSE, lines will be called.
+  lower  <- quants[1,]
+  median <- quants[2,]
+  upper  <- quants[3,]
+
+  if(first){
+    plot(yrs, median, type="l", col=color, lty=1, lwd=2, ylim=c(yLower, yUpper), ...)
+    shade <- .getShade(color, opacity)
+    polyYears <- c(yrs, rev(yrs))
+    polyCI    <- c(lower, rev(upper))
+    polygon(polyYears, polyCI, col = shade)
+  }else{
+    lines(yrs, median, type="l", col=color, lty=1, lwd=2, ylim=c(yLower, yUpper), ...)
+    # Upper and lower part of CI
+    lines(yrs, lower, col=color, lty=5, lwd=1)
+    lines(yrs, upper, col=color, lty=5, lwd=1)
+  }
+}
+
+drawEnvelopeShaded <- function(yrs, quants, color, yLower = 0, yUpper, first, opacity = 90, ...){
   # Draw a time series envelope on a device on which plot.new has already been called
   # Assumptions: quants is a 3-row matrix,
   #  where the middle row is the median and the other two are the lower and upper
@@ -161,7 +192,7 @@ drawEnvelope <- function(yrs, quants, color, yLower = 0, yUpper, first, ...){
     lines(yrs, median, type="l", col=color, lty=1, lwd=2, ylim=c(yLower, yUpper), ...)
   }
 
-  shade <- .getShade(color, 30)
+  shade <- .getShade(color, opacity)
   polyYears <- c(yrs, rev(yrs))
   polyCI    <- c(lower, rev(upper))
   polygon(polyYears, polyCI, col = shade)
@@ -302,6 +333,84 @@ getRowsCols <- function(num){
   return(nside)
 }
 
+#' Prints a LaTeX table with numeric columns aligned on their decimal points.
+#'
+#' This function wraps the \code{\link{xtable}} and \code{\link{print.xtable}}
+#' functions in the \code{xtable} package so that numeric columns are aligned
+#' on their decimal place.
+#'
+#' See \url{http://jason.bryer.org/posts/2013-01-04/xtable_with_aligned_decimals.html}
+#' for more information.
+#'
+#' @author Jason Bryer <jason@@bryer.org>
+#' @param x a data frame to create a LaTeX table from.
+#' @param cols a numeric vector indicating which columns should be aligned on
+#'        decimal points. It defaults to all columns of type numeric.
+#' @param colAlignment named character vector where each element name corresponds to a
+#         column name and the value is the LaTeX alignment (i.e. l, r, or c).
+#' @param tocharFun the function used to convert the numeric vecotr to a character
+#'        vector. This defaults to \code{\link{prettyNum}}, but other possible
+#'        options are \code{\link{as.character}}, \code{\link{format}},
+#'        \code{\link{formatC}}, or some other custom function.
+#' @param ... other parameters passed to \code{tocharFun}, \code{\link{xtable}},
+#'        and \code{\link{print.xtable}}.
+xtable.decimal <- function(x,
+			cols=which(lapply(x, class) == 'numeric'),
+			colAlignment,
+			tocharFun=prettyNum,
+			...) {
+	splitCol <- function(x, ...) {
+		s <- strsplit(tocharFun(x, ...), split='.', fixed=TRUE)
+		right <- sapply(s, FUN=function(x) { ifelse(length(x) == 2, x[2], '0') })
+		left <- sapply(s, FUN=function(x) { x[1] })
+		data.frame(left=left, right=right, stringsAsFactors=FALSE)
+	}
+
+	cols <- cols[order(cols, decreasing=TRUE)]
+	colnames <- names(x)
+	for(i in cols) {
+		if(i == 1) {
+			tmp <- cbind(splitCol(x[,1], ...), x[,2:ncol(x)])
+			names(tmp)[1:2] <- paste(names(tmp)[1], c('left','right'), sep='.')
+			names(tmp)[3:ncol(x)] <- names(x)[2:ncol(x)]
+			x <- tmp
+		} else if(i == ncol(x)) {
+			tmp <- cbind(x[,1:(ncol(x)-1)], splitCol(x[,ncol(x)], ...))
+			names(tmp)[1:(ncol(tmp)-2)] <- names(x)[1:(ncol(x)-1)]
+			names(tmp)[(ncol(tmp)-1):ncol(tmp)] <- paste(names(x)[ncol(x)],
+						c('left','right'), sep='.')
+			x <- tmp
+		} else {
+			tmp <- cbind(x[,1:(i-1)], splitCol(x[,i], ...), x[,(i+1):ncol(x)])
+			names(tmp)[1:(i-1)] <- names(x)[1:(i-1)]
+			names(tmp)[i:(i+1)] <- paste(names(x)[i], c('left','right'), sep='.')
+			names(tmp)[(i+2):ncol(tmp)] <- names(x)[(i+1):ncol(x)]
+			x <- tmp
+		}
+	}
+
+	colnames[cols] <- paste('\\multicolumn{2}{c}{', colnames[cols], '}', sep='')
+	colnames <- paste(colnames, collapse=' & ')
+
+	addtorow <- list()
+	addtorow$pos <- list()
+	addtorow$pos[[1]] <- c(0)
+	addtorow$command <- paste( colnames, ' \\\\ ', sep='')
+
+	align <- rep('l', ncol(x))
+	if(!missing(colAlignment)) {
+		for(i in seq_along(colAlignment)) {
+			align[names(x) == names(colAlignment)[i]] <- colAlignment[i]
+		}
+	}
+	align[grep('.left$', names(x), perl=TRUE)] <- 'r@{.}'
+	align <- c('l', align) #Add an alignment for row names
+
+	xtab <- xtable(x, align=align, ...)
+ 	print(xtab, add.to.row=addtorow, include.rownames=FALSE, include.colnames=FALSE, ...)
+#	return(xtab)
+}
+
 ile <- function(l, ind, val, replace=FALSE){
   # insert the element 'val' at list 'l' in position given by 'ind'
   # while preserving the rest of the list.
@@ -427,7 +536,7 @@ testile <- function(){
 
   l <- list(1,2,4)
   ind <- 3
-  val<- 3
+  val <-3
   out <- ile(l,ind,val)
   cat0("**********************************************")
   cat0(.PROJECT_NAME,"->",currFuncName,"Insert value in middle of list")
@@ -552,4 +661,269 @@ testile <- function(){
   cat0("Returned list:")
   print(out)
   cat0("**********************************************")
+}
+
+# as.ts.mcmc was copied from coda package source, to fulfill autocorr.plot requirement
+as.ts.mcmc <- function (x, ...) 
+{
+  x <- as.mcmc(x)
+  y <- ts(x, start = start(x), end = end(x), deltat = thin(x))
+  attr(y, "mcpar") <- NULL
+  return(y)
+}
+
+# autocorr.plot from coda package, but the package source had the ylab="Autocorrelation" for all plots
+# and no way to override it. That caused latex to place the plot in landscape mode which was ugly.
+autocorr.plot <- function (x, lag.max, auto.layout = TRUE, ask, ...) 
+{
+    if (missing(ask)) {
+        ask <- if (is.R()) {
+            dev.interactive()
+        }
+        else {
+            interactive()
+        }
+    }
+    oldpar <- NULL
+    on.exit(par(oldpar))
+    if (auto.layout) 
+        oldpar <- par(mfrow = set.mfrow(Nchains = nchain(x), 
+            Nparms = nvar(x)))
+    if (!is.mcmc.list(x)) 
+        x <- mcmc.list(as.mcmc(x))
+    for (i in 1:nchain(x)) {
+        xacf <- if (missing(lag.max)) 
+            acf(as.ts.mcmc(x[[i]]), plot = FALSE)
+        else acf(as.ts.mcmc(x[[i]]), lag.max = lag.max, plot = FALSE)
+        for (j in 1:nvar(x)) {
+            plot(xacf$lag[, j, j], xacf$acf[, j, j], type = "h", 
+                ylab = "", xlab = "Lag", ylim = c(-1, 
+                #ylab = "Autocorrelation", xlab = "Lag", ylim = c(-1, # Here is the bad line!!
+                  1), ...)
+            title(paste(varnames(x)[j], ifelse(is.null(chanames(x)), 
+                "", ":"), chanames(x)[i], sep = ""))
+            if (i == 1 && j == 1) 
+                oldpar <- c(oldpar, par(ask = ask))
+        }
+    }
+    invisible(x)
+}
+
+# cbind without replication, from qpcR package
+cbind.na <- function (..., deparse.level = 1) 
+{
+    na <- nargs() - (!missing(deparse.level))    
+    deparse.level <- as.integer(deparse.level)
+    stopifnot(0 <= deparse.level, deparse.level <= 2)
+    argl <- list(...)   
+    while (na > 0 && is.null(argl[[na]])) {
+        argl <- argl[-na]
+        na <- na - 1
+    }
+    if (na == 0) 
+        return(NULL)
+    if (na == 1) {         
+        if (isS4(..1)) 
+            return(cbind2(..1))
+        else return(matrix(...))  ##.Internal(cbind(deparse.level, ...)))
+    }    
+    
+    if (deparse.level) {       
+        symarg <- as.list(sys.call()[-1L])[1L:na]
+        Nms <- function(i) {
+            if (is.null(r <- names(symarg[i])) || r == "") {
+                if (is.symbol(r <- symarg[[i]]) || deparse.level == 
+                  2) 
+                  deparse(r)
+            }
+            else r
+        }
+    }   
+    ## deactivated, otherwise no fill in with two arguments
+    if (na == 0) {
+        r <- argl[[2]]
+        fix.na <- FALSE
+    }
+    else {
+        nrs <- unname(lapply(argl, nrow))
+        iV <- sapply(nrs, is.null)
+        fix.na <- identical(nrs[(na - 1):na], list(NULL, NULL))
+        ## deactivated, otherwise data will be recycled
+        #if (fix.na) {
+        #    nr <- max(if (all(iV)) sapply(argl, length) else unlist(nrs[!iV]))
+        #    argl[[na]] <- cbind(rep(argl[[na]], length.out = nr), 
+        #        deparse.level = 0)
+        #}       
+        if (deparse.level) {
+            if (fix.na) 
+                fix.na <- !is.null(Nna <- Nms(na))
+            if (!is.null(nmi <- names(argl))) 
+                iV <- iV & (nmi == "")
+            ii <- if (fix.na) 
+                2:(na - 1)
+            else 2:na
+            if (any(iV[ii])) {
+                for (i in ii[iV[ii]]) if (!is.null(nmi <- Nms(i))) 
+                  names(argl)[i] <- nmi
+            }
+        }
+           
+        ## filling with NA's to maximum occuring nrows
+        nRow <- as.numeric(sapply(argl, function(x) NROW(x)))
+        maxRow <- max(nRow, na.rm = TRUE)  
+        argl <- lapply(argl, function(x)  if (is.null(nrow(x))) c(x, rep(NA, maxRow - length(x)))
+                                          else rbind.na(x, matrix(, maxRow - nrow(x), ncol(x))))
+        r <- do.call(cbind, c(argl[-1L], list(deparse.level = deparse.level)))
+    }
+    d2 <- dim(r)
+    r <- cbind2(argl[[1]], r)
+    if (deparse.level == 0) 
+        return(r)
+    ism1 <- !is.null(d1 <- dim(..1)) && length(d1) == 2L
+    ism2 <- !is.null(d2) && length(d2) == 2L && !fix.na
+    if (ism1 && ism2) 
+        return(r)
+    Ncol <- function(x) {
+        d <- dim(x)
+        if (length(d) == 2L) 
+            d[2L]
+        else as.integer(length(x) > 0L)
+    }
+    nn1 <- !is.null(N1 <- if ((l1 <- Ncol(..1)) && !ism1) Nms(1))
+    nn2 <- !is.null(N2 <- if (na == 2 && Ncol(..2) && !ism2) Nms(2))
+    if (nn1 || nn2 || fix.na) {
+        if (is.null(colnames(r))) 
+            colnames(r) <- rep.int("", ncol(r))
+        setN <- function(i, nams) colnames(r)[i] <<- if (is.null(nams)) 
+            ""
+        else nams
+        if (nn1) 
+            setN(1, N1)
+        if (nn2) 
+            setN(1 + l1, N2)
+        if (fix.na) 
+            setN(ncol(r), Nna)
+    }
+    r
+}
+
+# rbind without replication, from qpcR package
+rbind.na <- function (..., deparse.level = 1) 
+{
+    na <- nargs() - (!missing(deparse.level))
+    deparse.level <- as.integer(deparse.level)
+    stopifnot(0 <= deparse.level, deparse.level <= 2)
+    argl <- list(...)
+    while (na > 0 && is.null(argl[[na]])) {
+        argl <- argl[-na]
+        na <- na - 1
+    }    
+    if (na == 0) 
+        return(NULL)
+    if (na == 1) {
+        if (isS4(..1)) 
+            return(rbind2(..1))
+        else return(matrix(..., nrow = 1)) ##.Internal(rbind(deparse.level, ...)))
+    }
+        
+    if (deparse.level) {
+        symarg <- as.list(sys.call()[-1L])[1L:na]
+        Nms <- function(i) {
+            if (is.null(r <- names(symarg[i])) || r == "") {
+                if (is.symbol(r <- symarg[[i]]) || deparse.level == 
+                  2) 
+                  deparse(r)
+            }
+            else r
+        }
+    }
+    
+    ## deactivated, otherwise no fill in with two arguments
+    if (na == 0) {
+        r <- argl[[2]]
+        fix.na <- FALSE
+    }
+    else {
+        nrs <- unname(lapply(argl, ncol))
+        iV <- sapply(nrs, is.null)
+        fix.na <- identical(nrs[(na - 1):na], list(NULL, NULL))
+        ## deactivated, otherwise data will be recycled
+        #if (fix.na) {
+        #    nr <- max(if (all(iV)) sapply(argl, length) else unlist(nrs[!iV]))
+        #    argl[[na]] <- rbind(rep(argl[[na]], length.out = nr), 
+        #        deparse.level = 0)
+        #}
+        if (deparse.level) {
+            if (fix.na) 
+                fix.na <- !is.null(Nna <- Nms(na))
+            if (!is.null(nmi <- names(argl))) 
+                iV <- iV & (nmi == "")
+            ii <- if (fix.na) 
+                2:(na - 1)
+            else 2:na
+            if (any(iV[ii])) {
+                for (i in ii[iV[ii]]) if (!is.null(nmi <- Nms(i))) 
+                  names(argl)[i] <- nmi
+            }
+        }
+        
+        ## filling with NA's to maximum occuring ncols
+        nCol <- as.numeric(sapply(argl, function(x) if (is.null(ncol(x))) length(x)
+                                                    else ncol(x)))
+        maxCol <- max(nCol, na.rm = TRUE)  
+        argl <- lapply(argl, function(x)  if (is.null(ncol(x))) c(x, rep(NA, maxCol - length(x)))
+                                          else cbind(x, matrix(, nrow(x), maxCol - ncol(x))))  
+        
+        ## create a common name vector from the
+        ## column names of all 'argl' items
+        namesVEC <- rep(NA, maxCol)  
+        for (i in 1:length(argl)) {
+          CN <- colnames(argl[[i]])          
+          m <- !(CN %in% namesVEC)
+          namesVEC[m] <- CN[m]          
+        }  
+        
+        ## make all column names from common 'namesVEC'
+        for (j in 1:length(argl)) {    
+          if (!is.null(ncol(argl[[j]]))) colnames(argl[[j]]) <- namesVEC
+        }
+        
+        r <- do.call(rbind, c(argl[-1L], list(deparse.level = deparse.level)))        
+    }
+    
+    d2 <- dim(r)
+    
+    ## make all column names from common 'namesVEC'
+    colnames(r) <- colnames(argl[[1]])
+    
+    r <- rbind2(argl[[1]], r)
+        
+    if (deparse.level == 0) 
+        return(r)
+    ism1 <- !is.null(d1 <- dim(..1)) && length(d1) == 2L
+    ism2 <- !is.null(d2) && length(d2) == 2L && !fix.na
+    if (ism1 && ism2) 
+        return(r)
+    Nrow <- function(x) {
+        d <- dim(x)
+        if (length(d) == 2L) 
+            d[1L]
+        else as.integer(length(x) > 0L)
+    }
+    nn1 <- !is.null(N1 <- if ((l1 <- Nrow(..1)) && !ism1) Nms(1))
+    nn2 <- !is.null(N2 <- if (na == 2 && Nrow(..2) && !ism2) Nms(2))
+    if (nn1 || nn2 || fix.na) {
+        if (is.null(rownames(r))) 
+            rownames(r) <- rep.int("", nrow(r))
+        setN <- function(i, nams) rownames(r)[i] <<- if (is.null(nams)) 
+            ""
+        else nams
+        if (nn1) 
+            setN(1, N1)
+        if (nn2) 
+            setN(1 + l1, N2)
+        if (fix.na) 
+            setN(nrow(r), Nna)
+    }
+    r
 }

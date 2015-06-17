@@ -20,6 +20,7 @@
     cat0(.PROJECT_NAME,"->",getCurrFunc(),"Loading data from model output files.")
     op   <<- .loadScenarios(.SCENARIOS_DIR_NAME)
     sens <<- .loadSensitivityGroups(op = op)
+    catch <<- .loadCatchdata()
     modelLoaded <<- TRUE
   }else{
     cat0(.PROJECT_NAME,"->",getCurrFunc(),"Using previously loaded data for GUI.  Use ",.MAIN_FUNCTION_CALL,"(TRUE) to reload the Scenarios.\n")
@@ -879,8 +880,8 @@ readControl <- function(file = NULL, ngears = NULL, nagears = NULL, verbose = FA
 
   # Now we have a nice bunch of string elements which are the inputs for iscam.
   # Here we parse them into a list structure
-  # This is dependent on the current format of the DAT file and needs to
-  # be updated whenever the DAT file changes format
+  # This is dependent on the current format of the CTL file and needs to
+  # be updated whenever the CTL file changes format
   tmp <- list()
   ind <- 0
   tmp$npar <- as.numeric(dat[ind <- ind + 1])
@@ -1092,7 +1093,9 @@ readMCMC <- function(dired = NULL, verbose = TRUE){
   mcmcrtfn   <- file.path(dired,.MCMC_RECRUITMENT_FILE_NAME)
   mcmcrdevfn <- file.path(dired,.MCMC_RECRUITMENT_DEVS_FILE_NAME)
   mcmcftfn   <- file.path(dired,.MCMC_FISHING_MORT_FILE_NAME)
+  mcmcutfn   <- file.path(dired,.MCMC_FISHING_MORT_U_FILE_NAME)
   mcmcvbtfn  <- file.path(dired,.MCMC_VULN_BIOMASS_FILE_NAME)
+  mcmcprojfn <- file.path(dired,.MCMC_PROJ_FILE_NAME)
 
   tmp        <- list()
   tmp$params <- read.csv(mcmcfn)
@@ -1102,10 +1105,16 @@ readMCMC <- function(dired = NULL, verbose = TRUE){
   tmp$rt     <- extractGroupMatrices(rt, prefix = "rt")
   ft         <- read.csv(mcmcftfn)
   tmp$ft     <- extractAreaSexMatrices(ft, prefix = "ft")
+  ut         <- read.csv(mcmcutfn)
+  tmp$ut     <- extractAreaSexMatrices(ut, prefix = "ut")
   rdev       <- read.csv(mcmcrdevfn)
   tmp$rdev   <- extractGroupMatrices(rdev, prefix = "rdev")
   vbt        <- read.csv(mcmcvbtfn)
   tmp$vbt    <- extractAreaSexMatrices(vbt, prefix = "vbt")
+  tmp$proj <- NULL
+  if(file.exists(mcmcprojfn)){
+    tmp$proj   <- read.csv(mcmcprojfn)
+  }
   return(tmp)
 }
 
