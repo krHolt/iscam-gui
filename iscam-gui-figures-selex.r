@@ -119,12 +119,27 @@ plotSelex <- function(scenario   = 1,            # Scenario number
     windows(width=widthScreen,height=heightScreen)
   }
 
+  selType<-op[[scenario]]$inputs$control$sel[1,index][[1]]
+
   if(plotNum==1){
-    plotLogisticSel(scenario, out, colors, names, lty = linetypes, inputs = inputs,
-                    controlinputs = controlinputs, index = index, verbose = !silent, leg = leg, showtitle = showtitle, add=add)
+   if (selType == 1 | selType == 6) {
+      plotAgeLogisticSel(scenario, out, colors, names, lty = linetypes, inputs = inputs,
+          controlinputs = controlinputs, index = index, verbose = !silent, leg = leg, showtitle = showtitle,add=add)
+    }
+    if (selType == 11) {
+        plotLengthLogisticSel(scenario, out, colors, names, lty = linetypes, inputs = inputs,
+          controlinputs = controlinputs, index = index, verbose = !silent, leg = leg, showtitle = showtitle, add=add)
+    }
   }
+
   if(plotNum==2){
-    plotLogisticSelAllGears(scenario, out, inputs=inputs, controlinputs=controlinputs, verbose = !silent, leg = leg, showtitle = showtitle, add=add, showmat=showmat)
+     if (selType == 1 | selType == 6) {
+        plotAgeLogisticSelAllGears(scenario, out, inputs=inputs, controlinputs=controlinputs, verbose = !silent, leg = leg, showtitle = showtitle, add=add, showmat=showmat)
+     }
+     if (selType == 11) {
+        plotLengthLogisticSelAllGears(scenario, out, inputs=inputs, controlinputs=controlinputs, verbose = !silent, leg = leg, showtitle = showtitle, add=add)
+     }
+
   }
 
   if(!is.null(indletter)){
@@ -138,7 +153,7 @@ plotSelex <- function(scenario   = 1,            # Scenario number
   return(TRUE)
 }
 
-plotLogisticSelAllGears	<-	function(scenario, out, inputs, controlinputs, verbose, leg, showtitle = TRUE, add=FALSE, showmat=FALSE){
+plotAgeLogisticSelAllGears	<-	function(scenario, out, inputs, controlinputs, verbose, leg, showtitle = TRUE, add=FALSE, showmat=FALSE){
   # Currently only implemented for seltypes 1,6 and 11 (estimated logistic age-based, fixed logistic age-based, or estimated logistic length-based)
   # Single sex only, no time blocks
   # Parses the control inputs to see which gears have age comps and therefore selectivity estimates
@@ -205,8 +220,65 @@ plotLogisticSelAllGears	<-	function(scenario, out, inputs, controlinputs, verbos
   }
 }
 
-plotLogisticSel	<-	function(scenario, out, colors, names, lty, inputs, controlinputs, index, verbose, leg, showtitle = TRUE, add=FALSE){
+
+plotLengthLogisticSelAllGears	<-	function(scenario, out, inputs, controlinputs, verbose, leg, showtitle = TRUE, add=FALSE){
   # Currently only implemented for seltypes 1,6 and 11 (estimated logistic age-based, fixed logistic age-based, or estimated logistic length-based)
+  # Single sex only, no time blocks
+  # Parses the control inputs to see which gears have age comps and therefore selectivity estimates
+  # Assumes 'out' is list of length 1, this is not a sensitivity plot but a single-scenario plot with multiple gears.
+  # If showmat is TRUE then maturity ogive will be included in plot
+
+  currFuncName <- getCurrFunc()
+  if(!add){
+    oldPar <- par(no.readonly=TRUE)
+    on.exit(par(oldPar))
+  }
+  # Selectivity parameter values from the model. Even if fixed, they appear in the output.
+  selex <- out[[1]]$mpd$sel
+  # Get gear names
+  gearnames <- inputs[[1]]$gearNames[1:nrow(selex)]
+  # Get phase information for the gears, negatives are fixed, positives are estimated
+  estphase <- controlinputs[[1]]$sel[6,]
+
+  # Change the names of the fixed selectivities in the legend
+  gearnames[estphase<0] <- paste0(gearnames[estphase<0]," (Fixed)")
+
+   len<-seq(min(op[[scenario]]$output$mpd$la)*0.9,max(op[[scenario]]$output$mpd$la)*1.1,length=100)
+   sel<-matrix(NA,length(len),nrow(selex))
+
+   for(gearnum in 1:nrow(selex)){
+
+      selPars <-  selex
+			selPars <- selex[which(selPars[,1]==gearnum),]
+
+      if (selPars[2]==1) {  #Plot only works for gears with one time block at present
+        ahat<-op[[scenario]]$output$mpd$sel_par[gearnum,][3]
+        ghat<-op[[scenario]]$output$mpd$sel_par[gearnum,][4]
+      }
+      sel[,gearnum]<-plogis(len,ahat,ghat)
+
+  }
+
+  titletext <- ""
+  if(showtitle){
+    titletext <- "Selectivities for all gears"
+  }
+  col <- seq(1,ncol(sel))
+  lty <- rep(1,ncol(sel))
+  lwd <- rep(2,ncol(sel))
+  matplot(len, sel, type = "l", lwd = lwd, col = col, lty = lty, las = 1,
+          main = titletext, xlim = c(min(len), max(len)), ylim = c(0,1.1), ylab="Selectivity", xlab="Length")
+
+  if(!is.null(leg)){
+    legend(leg, legend=gearnames, col=col, lty=lty, lwd=lwd)
+  }
+}
+
+
+
+
+plotAgeLogisticSel	<-	function(scenario, out, colors, names, lty, inputs, controlinputs, index, verbose, leg, showtitle = TRUE, add=FALSE){
+  # Currently only implemented for seltypes 1,6 (estimated logistic age-based, fixed logistic age-based)
   # Both sexes will be plotted with linetype of the females = linetype for males + 1 The colors will be the same.
   # Notes:
   # - Models may have different gears than others, but we want the selectivity plots to match by gear.
@@ -329,6 +401,105 @@ plotLogisticSel	<-	function(scenario, out, colors, names, lty, inputs, controlin
   names[sapply(names, is.na)] <- NULL
   matplot(age, mat, type = "l", lwd = 2, lty = unlist(lty), col = unlist(colors), las = 1,
           main = titletext, xlim = c(1,max(age)), ylim = c(0,1.1), ylab="Selectivity", xlab="Age")
+  if(!is.null(leg)){
+    legend(leg, legend=names, col=unlist(colors), lty=unlist(lty), lwd=2)
+  }
+}
+
+plotLengthLogisticSel	<-	function(scenario, out, colors, names, lty, inputs, controlinputs, index, verbose, leg, showtitle = TRUE, add=FALSE){
+  # Currently only implemented for seltypes 1 and 6 (estimated logistic age-based, fixed logistic age-based)
+  # Both sexes will be plotted with linetype of the females = linetype for males + 1 The colors will be the same.
+  # Notes:
+  # - Models may have different gears than others, but we want the selectivity plots to match by gear.
+  #   The solution is to match them by name if plotting multiple (sensitivity plots)
+  #   by creating a unique vector of names which is the union of all names across all models
+  #   and using that to match to the names in each model, only plotting if the name is found.
+  #
+  # - Selectivity blocks (if more than one) will be drawn with the same color as the scenario's color,
+  #   but incrementing line tyles (lty) and labelled on the legend with the range of years the block covers.
+
+  currFuncName <- getCurrFunc()
+  if(!add){
+    oldPar <- par(no.readonly=TRUE)
+    on.exit(par(oldPar))
+  }
+
+  # Get a list of unique index names across all models to be included in this plot
+  agegearnames <- NULL
+  for(model in 1:length(inputs)){
+    #agegearnames <- c(agegearnames, inputs[[model]]$ageGearNames)
+    agegearnames <- c(agegearnames, inputs[[model]]$gearNames)
+  }
+  if(is.null(agegearnames)){
+    cat0(.PROJECT_NAME,"->",currFuncName,"You must supply age gear names in the data files to plot selectivities across models.")
+    return(NULL)
+  }
+  agegearnames <- unique(agegearnames)
+  if(index > length(agegearnames)){
+    cat0(.PROJECT_NAME,"->",currFuncName,"You must supply a gear number less or equal to ",length(agegearnames),".")
+    return(NULL)
+  }
+  curragegearname <- agegearnames[index]
+  # The 'agegearnames' vector will be used as the gear to scroll through,
+  # i.e. when the user changes to the next gear, the next name in this list will
+  # be matched.
+  titleText       <- agegearnames[index]
+
+  # mat will hold all rows to be plotted. These can be different models, multiple time blocks
+  # within a model, two sexes, or any combination of these.
+  # lty, names, and colors will also be modified to reflect the complexities stated.
+  mat <- NULL
+  for(model in 1:length(out)){
+    # For each model, chek to see that it matches the current gear to be plotted,
+    # then check for selectivity blocks and add them
+    age <- out[[model]]$mpd$age
+    gearnum      <- match(curragegearname, inputs[[model]]$gearNames)
+    logselData   <- out[[model]]$mpd$log_sel
+    if(is.na(gearnum)){
+      # The gear being plotted is not in this model, so remove the gear from the
+      # legend lists by setting to NA. It will be set to NULL later to erase them from the list.
+      lty[[model]] <- NA
+      colors[[model]] <- NA
+      names[[model]] <- NA
+    }else{
+      # Get the selectivity time blocks for this gear (index)
+      tb           <- controlinputs[[model]]$syrtimeblock[gearnum,]
+      nsex         <- inputs[[model]]$nsex
+      age          <- out[[model]]$mpd$age
+      agegearnames <- inputs[[model]]$gearNames
+      logselData   <- logselData[which(logselData[,1] == gearnum),]
+      nb <- controlinputs[[model]]$sel["nselblocks",][gearnum]
+      yrs <- logselData[,3]
+      if(nb > 1){ # If the number of selectivity blocks is > 1
+        browser() # Code not yet written for length-based selectivity
+      }else{
+
+         l<-seq(min(op[[scenario]]$output$mpd$la)*0.9,max(op[[scenario]]$output$mpd$la)*1.1,length=100)
+
+         selPars <-  op[[scenario]]$output$mpd$sel_par
+			   selPars <- selPars[which(selPars[,1]==index),]
+
+         if (selPars[2]==1) {  #Plot only works for gears with one time block at present
+           ahat<-op[[scenario]]$output$mpd$sel_par[index,][3]
+           ghat<-op[[scenario]]$output$mpd$sel_par[index,][4]
+         }
+         sel<-plogis(l,ahat,ghat)
+
+      }
+      gearTitle <- agegearnames[gearnum]
+    }
+  }
+  titletext <- ""
+  if(showtitle){
+    titletext <- gearTitle
+  }
+  # Change the NAs to NULLs for the legend variables, using the property that if a list
+  # element is set to NULL, it will be removed completely from the list.
+  lty[sapply(lty, is.na)] <- NULL
+  colors[sapply(colors, is.na)] <- NULL
+  names[sapply(names, is.na)] <- NULL
+  matplot(l, sel, type = "l", lwd = 2, lty = unlist(lty), col = unlist(colors), las = 1,
+          main = titletext, xlim = c(min(l),max(l)), ylim = c(0,1.1), ylab="", xlab="Length")
   if(!is.null(leg)){
     legend(leg, legend=names, col=unlist(colors), lty=unlist(lty), lwd=2)
   }
